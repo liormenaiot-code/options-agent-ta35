@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>סוכן אופציות | ת"א 35</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=19" />
+</head>
+<body>
+
+  <!-- ══ LOADING OVERLAY ══════════════════════════════════════════ -->
+  <div id="loading-overlay" class="hidden">
+    <div class="load-inner">
+      <div class="load-ring"></div>
+      <div class="load-steps">
+        <div class="lstep" id="lstep-1"><span class="lstep-dot"></span>אוסף נתוני שוק בזמן אמת</div>
+        <div class="lstep" id="lstep-2"><span class="lstep-dot"></span>סורק כותרות מהמקורות</div>
+        <div class="lstep" id="lstep-3"><span class="lstep-dot"></span>מנתח עם בינה מלאכותית</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ HEADER ════════════════════════════════════════════════════ -->
+  <header id="site-header">
+    <div class="hdr-logo">
+      <span class="logo-dot"></span>
+      <span class="logo-text">סוכן אופציות <em>ת"א&nbsp;35</em></span>
+    </div>
+    <button id="hdr-refresh-btn" class="hdr-refresh-btn hidden" onclick="refreshData(true)" title="ניתוח מחדש">
+      <span class="hdr-refresh-icon">⟳</span>
+      <span>ניתוח</span>
+    </button>
+    <div id="hdr-ticker" class="hdr-ticker hidden">
+      <span class="ticker-label">ת"א 35</span>
+      <span id="hdr-price" class="ticker-price">—</span>
+      <span id="hdr-change" class="ticker-change flat">—</span>
+    </div>
+  </header>
+
+  <!-- ══ ERROR BANNER ═══════════════════════════════════════════════ -->
+  <div id="error-banner" class="hidden"></div>
+
+  <!-- ══ HERO — start button only, no signal display ══════════════ -->
+  <section id="hero">
+    <div id="hero-initial">
+      <h1 class="hero-title"><span class="grad-text">ניתוח שוק בזמן&nbsp;אמת</span></h1>
+      <p class="hero-sub-glow">נתוני שוק, חדשות וסטטיסטיקה — הסוחר מחליט.</p>
+      <button id="refresh-btn" class="pill-ghost" onclick="refreshData()">
+        <span class="pill-icon">⟳</span>
+        <span class="pill-label">התחל ניתוח</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ══ MAIN CONTENT ═══════════════════════════════════════════════ -->
+  <main id="main-content" class="hidden">
+
+    <!-- STAT CARDS — price + VTA35 only -->
+    <section class="stat-row">
+      <div class="stat-card">
+        <div class="stat-label">מדד ת"א 35</div>
+        <div id="stat-price" class="stat-num cyan">—</div>
+        <div id="stat-change" class="stat-sub">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">VTA35 — מדד הפחד</div>
+        <div id="stat-vta35" class="stat-num orange">—</div>
+        <div id="stat-vta35-sub" class="stat-sub">—</div>
+      </div>
+    </section>
+
+    <!-- BREAKING NEWS — 3 items -->
+    <div id="breaking-news-block" style="display:none"></div>
+
+    <!-- STATISTICS — always visible -->
+    <section class="stats-section" id="stats-section">
+      <div id="stats-body" class="stats-body"></div>
+    </section>
+
+    <!-- RISKS -->
+    <section class="risks-section">
+      <div class="risks-header">
+        <span class="risks-icon">⚠</span>
+        <span class="risks-title">גורמי סיכון</span>
+      </div>
+      <div id="risk-chips" class="risk-chips"></div>
+    </section>
+
+    <!-- NEWS -->
+    <section class="news-section">
+      <div class="news-section-header">
+        <h2 class="news-grad-title">BREAKING NEWS</h2>
+        <span class="news-live-badge">LIVE</span>
+      </div>
+      <table class="news-table">
+        <thead>
+          <tr>
+            <th class="nt-num">#</th>
+            <th class="nt-src">מקור</th>
+            <th class="nt-hl">כותרת</th>
+            <th class="nt-impact">השפעה</th>
+          </tr>
+        </thead>
+        <tbody id="news-tbody"></tbody>
+      </table>
+    </section>
+
+    <!-- FOOTER -->
+    <footer id="site-footer">
+      <div id="ai-disclaimer" class="footer-disclaimer">—</div>
+      <div class="footer-legal">המידע מוצג לצרכי לימוד בלבד. אין לראות בתוכן זה ייעוץ השקעות מכל סוג.</div>
+      <div class="footer-copy">© 2026 סוכן אופציות ת"א 35</div>
+    </footer>
+
+  </main>
+
+  <script src="/static/app.js?v=17"></script>
+</body>
+</html>
