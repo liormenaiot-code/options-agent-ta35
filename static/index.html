@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=19" />
+  <link rel="stylesheet" href="/static/style.css?v=20" />
 </head>
 <body>
 
@@ -75,6 +75,22 @@
     <!-- BREAKING NEWS — 3 items -->
     <div id="breaking-news-block" style="display:none"></div>
 
+    <!-- PUT/CALL OPEN INTEREST — live from TASE -->
+    <section class="pc-section" id="pc-section">
+      <div class="pc-header">
+        <span class="pc-dot-call"></span>
+        <span class="pc-dot-put"></span>
+        <span class="pc-title">פוזיציות פתוחות — Call vs Put | ת"א 35</span>
+        <select id="pc-expiry-select" class="pc-expiry-select" onchange="onPcExpiryChange(this.value)">
+          <option value="">טוען תאריכים...</option>
+        </select>
+        <span class="pc-meta" id="pc-trade-date"></span>
+      </div>
+      <div class="pc-body" id="pc-body">
+        <div class="pc-loading">טוען פוזיציות פתוחות מהבורסה...</div>
+      </div>
+    </section>
+
     <!-- STATISTICS — always visible -->
     <section class="stats-section" id="stats-section">
       <div id="stats-body" class="stats-body"></div>
@@ -117,6 +133,6 @@
 
   </main>
 
-  <script src="/static/app.js?v=17"></script>
+  <script src="/static/app.js?v=18"></script>
 </body>
 </html>

@@ -185,24 +185,27 @@ def _calc_bollinger(closes, window=20, num_std=2):
 async def _fetch_vta35(client):
     """
     VTA35 — מדד הפחד הישראלי (Tel Aviv Volatility Index).
-    נתון מאומת בלבד: אם Yahoo Finance לא מחזיר נתון תקין — מחזיר None.
+    Scrapes live from investing.com as Yahoo Finance is unreliable.
     """
     try:
-        resp = await client.get(YAHOO_VTA35, headers=YAHOO_HEADERS, timeout=TIMEOUT)
+        url = "https://il.investing.com/indices/tase-vta35"
+        resp = await client.get(url, headers=HEADERS, timeout=TIMEOUT)
         resp.raise_for_status()
-        data   = resp.json()
-        result = data["chart"]["result"][0]
-        meta   = result["meta"]
-        price  = meta.get("regularMarketPrice")
-        prev   = meta.get("chartPreviousClose") or meta.get("previousClose")
-        if not price:
+        
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text, "html.parser")
+        price_el = soup.find(attrs={"data-test": "instrument-price-last"})
+        
+        if not price_el:
             return None
-        pct = round(((price - prev) / prev * 100), 2) if prev else None
+            
+        price = float(price_el.text.replace(',', ''))
+        
         return {
-            "value":      round(float(price), 2),
-            "prev_close": round(float(prev), 2) if prev else None,
-            "change_pct": pct,
-            "source":     "Yahoo Finance (VTA35.TA)",
+            "value":      round(price, 2),
+            "prev_close": None,
+            "change_pct": None,
+            "source":     "Investing.com",
         }
     except Exception:
         return None
@@ -297,6 +300,120 @@ def _scrape_expiry_stats() -> dict:
     These stats change by <0.1% per month — refreshing from DB adds no value.
     """
     return {**_EXPIRY_STATS_FALLBACK, "error": None}
+
+
+# ── TASE PUT/CALL OPEN INTEREST (via Playwright) ──────────────────────
+
+_TASE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Origin": "https://market.tase.co.il",
+    "Referer": "https://market.tase.co.il/en/market_data/derivatives/01/putcallchart",
+}
+
+_TASE_EXPIRY_URL  = "https://api.tase.co.il/api/derivatives/fltrputvscallexpdates"
+_TASE_CHART_URL   = "https://api.tase.co.il/api/derivatives/putvscallchartdata"
+
+
+def _calc_max_pain(points: list) -> float | None:
+    if not points:
+        return None
+    best, best_strike = float("inf"), None
+    for P_row in points:
+        P = P_row[0]
+        total = sum(
+            (P - r[0]) * r[1] if P > r[0] else (r[0] - P) * r[2]
+            for r in points if P != r[0]
+        )
+        if total < best:
+            best, best_strike = total, P
+    return best_strike
+
+
+async def _fetch_tase_putvscall(expiry_date: str | None = None) -> dict:
+    """
+    Fetches TASE Put vs Call OI + volume directly via api.tase.co.il (no browser needed).
+    expiry_date: DD/MM/YYYY or YYYY-MM-DD. If None, uses nearest monthly expiry.
+    Returns dict with keys: items, expiry_dates, trade_date, max_pain, error.
+    """
+    result: dict = {
+        "items": [], "expiry_dates": [], "trade_date": None,
+        "max_pain": None, "expiry_date": expiry_date, "error": None,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            # ── 1. Expiry dates ──────────────────────────────────────
+            r1 = await client.get(
+                _TASE_EXPIRY_URL,
+                params={"objId": "01", "lang": 1, "dType": 2, "date": ""},
+                headers=_TASE_HEADERS,
+            )
+            r1.raise_for_status()
+            dates_raw = r1.json().get("DerivativeExpirationDateItems", [])
+            result["expiry_dates"] = [
+                {
+                    "date":  d["Date"],
+                    "label": f"{d['Date']} ({'חודשי' if d.get('ExpirationDateType') == '02' else 'שבועי'})",
+                    "type":  "monthly" if d.get("ExpirationDateType") == "02" else "weekly",
+                }
+                for d in dates_raw
+            ]
+
+            # ── 2. Resolve target expiry → YYYY-MM-DD ───────────────
+            target_iso: str | None = None
+            if expiry_date:
+                raw = expiry_date.split(" (")[0].strip()   # strip label suffix
+                if "/" in raw:                              # DD/MM/YYYY → YYYY-MM-DD
+                    p = raw.split("/")
+                    if len(p) == 3:
+                        yr = p[2] if len(p[2]) == 4 else "20" + p[2]
+                        target_iso = f"{yr}-{p[1]}-{p[0]}"
+                else:
+                    target_iso = raw                        # already YYYY-MM-DD
+            else:
+                # Default: nearest monthly, else nearest weekly
+                monthly = next((d for d in dates_raw if d.get("ExpirationDateType") == "02"), None)
+                chosen  = monthly or (dates_raw[0] if dates_raw else None)
+                if chosen:
+                    p = chosen["Date"].split("/")
+                    target_iso = f"{p[2]}-{p[1]}-{p[0]}"
+
+            if not target_iso:
+                result["error"] = "no expiry dates available"
+                return result
+
+            # ── 3. Chart data ────────────────────────────────────────
+            r2 = await client.post(
+                _TASE_CHART_URL,
+                headers={**_TASE_HEADERS, "Content-Type": "application/json"},
+                json={"objId": "01", "lang": 1, "dType": 2,
+                      "exprDate": target_iso, "inQType": 2, "updType": 1},
+            )
+            r2.raise_for_status()
+            body = r2.json()
+            result["trade_date"] = body.get("TradeDate")
+            points = body.get("PointsOfChart", [])  # [strike, call_oi, put_oi, call_vol, put_vol]
+
+            result["items"] = [
+                {
+                    "strike":        int(p[0]),
+                    "call_open_pos": int(p[1]),
+                    "put_open_pos":  int(p[2]),
+                    "call_vol":      int(p[3]),
+                    "put_vol":       int(p[4]),
+                }
+                for p in points if len(p) >= 5
+            ]
+            result["max_pain"] = _calc_max_pain(points)
+
+    except Exception as exc:
+        result["error"] = str(exc)
+
+    return result
 
 
 # ── MAIN ──────────────────────────────────────────────────────────────

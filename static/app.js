@@ -9,7 +9,10 @@ let hasAnalysis  = false;
 const FETCH_TIMEOUT_MS = 200_000; // 3:20 min hard cap
 
 document.addEventListener('DOMContentLoaded', () => {
-  loadExpiryDates().then(() => refreshData());
+  loadExpiryDates().then(() => {
+    refreshData();
+    loadPutCall();  // load Put/Call independently
+  });
 });
 
 // ── EXPIRY (kept for API param, no UI dropdown) ─────────────────────
@@ -141,7 +144,7 @@ function renderAll(data) {
   hasAnalysis = true;
 
   document.getElementById('hero-initial').classList.add('hidden');
-  document.getElementById('hero').classList.add('compact');
+  document.getElementById('hero').classList.add('hidden');
   document.getElementById('main-content').classList.remove('hidden');
   document.getElementById('hdr-ticker').classList.remove('hidden');
   document.getElementById('hdr-refresh-btn').classList.remove('hidden');
@@ -211,7 +214,7 @@ function renderVolatility(vol) {
   }
 }
 
-// ── BREAKING NEWS (3 items) ─────────────────────────────────────────
+// ── BREAKING NEWS (12 items) ─────────────────────────────────────────
 function renderBreakingNews(items) {
   const block = document.getElementById('breaking-news-block');
   if (!items?.length) { block.style.display = 'none'; return; }
@@ -221,7 +224,7 @@ function renderBreakingNews(items) {
     (urgencyOrder[a.urgency] ?? 9) - (urgencyOrder[b.urgency] ?? 9)
   );
 
-  block.innerHTML = sorted.slice(0, 3).map(ni => {
+  block.innerHTML = sorted.slice(0, 12).map(ni => {
     const dir    = ni.direction || '';
     const isBull = dir === 'שורי';
     const isBear = dir === 'דובי';
@@ -412,4 +415,179 @@ function esc(str) {
   const d = document.createElement('div');
   d.textContent = String(str || '');
   return d.innerHTML;
+}
+
+// ── PUT/CALL TABLE ─────────────────────────────────────────────────
+let _pcLoading = false;
+
+async function loadPutCall(expiry = null, force = false) {
+  if (_pcLoading) return;
+  _pcLoading = true;
+
+  const body = document.getElementById('pc-body');
+  if (!body) { _pcLoading = false; return; }
+
+  body.innerHTML = '<div class="pc-loading">⏳ טוען פוזיציות פתוחות מהבורסה...</div>';
+
+  try {
+    const params = new URLSearchParams();
+    const exp = expiry || selectedExpiry;
+    if (exp)   params.set('expiry', exp);
+    if (force) params.set('force',  'true');
+
+    const resp = await fetch(`/api/putvscall?${params.toString()}`);
+    if (!resp.ok) throw new Error(`שגיאת שרת: ${resp.status}`);
+    const data = await resp.json();
+    renderPutCall(data);
+  } catch (err) {
+    if (body) body.innerHTML = `<div class="pc-error">⚠ שגיאה בטעינת נתוני Put/Call: ${esc(err.message)}</div>`;
+  } finally {
+    _pcLoading = false;
+  }
+}
+
+function renderPutCall(data) {
+  const body      = document.getElementById('pc-body');
+  const expSelect = document.getElementById('pc-expiry-select');
+  const dateLbl   = document.getElementById('pc-trade-date');
+  if (!body) return;
+
+  const items = data.items || [];
+  
+  // Populate expiry dropdown if we have dates
+  if (expSelect && data.expiry_dates?.length) {
+    const currentVal = expSelect.value;
+    expSelect.innerHTML = data.expiry_dates.map(d => 
+      `<option value="${esc(d.date)}" ${d.date === data.expiry_date ? 'selected' : ''}>${esc(d.label)}</option>`
+    ).join('');
+    
+    // If we didn't have a selection yet, or if it changed
+    if (data.expiry_date) selectedExpiry = data.expiry_date;
+  }
+
+  if (!items.length) {
+    body.innerHTML = '<div class="pc-loading">אין נתונים זמינים לתאריך זה</div>';
+    return;
+  }
+
+  if (dateLbl) dateLbl.textContent = data.trade_date ? `נכון ל: ${data.trade_date}` : '';
+
+  // Compute summary totals
+  let totalCallOI = 0, totalPutOI = 0;
+  items.forEach(r => {
+    totalCallOI += r.call_open_pos || 0;
+    totalPutOI  += r.put_open_pos  || 0;
+  });
+  const totalOI  = totalCallOI + totalPutOI || 1;
+  const pcRatio  = totalPutOI > 0 ? (totalCallOI / totalPutOI).toFixed(2) : '—';
+  const callPct  = Math.round(totalCallOI / totalOI * 100);
+  const putPct   = 100 - callPct;
+
+  // Max OI for bar scaling
+  const maxOI = Math.max(...items.map(r => Math.max(r.call_open_pos || 0, r.put_open_pos || 0)), 1);
+
+  // ATM — closest strike to current TA-35 price
+  const currentPrice = parseFloat(document.getElementById('stat-price')?.textContent?.replace(/,/g, '') || '0');
+  let atmStrike = null;
+  if (currentPrice > 0) {
+    let minDiff = Infinity;
+    items.forEach(r => {
+      const diff = Math.abs(r.strike - currentPrice);
+      if (diff < minDiff) { minDiff = diff; atmStrike = r.strike; }
+    });
+  }
+
+  // Build rows — sorted by strike ascending
+  const sorted = [...items].sort((a, b) => a.strike - b.strike);
+
+  const rows = sorted.map(r => {
+    const isAtm = atmStrike && r.strike === atmStrike;
+    const atmClass = isAtm ? ' class="pc-atm"' : '';
+
+    const callOI     = r.call_open_pos != null ? r.call_open_pos.toLocaleString('he-IL') : '—';
+    const callChg    = r.call_pos_change != null ? fmtChg(r.call_pos_change) : '';
+    const callDeals  = r.call_deals != null ? r.call_deals : '—';
+    const putOI      = r.put_open_pos  != null ? r.put_open_pos.toLocaleString('he-IL')  : '—';
+    const putChg     = r.put_pos_change  != null ? fmtChg(r.put_pos_change)  : '';
+    const putDeals   = r.put_deals  != null ? r.put_deals  : '—';
+    const strike     = r.strike?.toLocaleString('he-IL') || '—';
+
+    const callBarW = Math.round((r.call_open_pos || 0) / maxOI * 60);
+    const putBarW  = Math.round((r.put_open_pos  || 0) / maxOI * 60);
+
+    return `<tr${atmClass}>
+      <td class="pc-td-call">
+        <div class="pc-oi-bar-wrap">
+          <span>${callOI}</span>
+          <div class="pc-oi-bar call" style="width:${callBarW}px"></div>
+        </div>
+      </td>
+      <td class="pc-td-call" style="font-size:0.75rem">${callChg}</td>
+      <td class="pc-td-call" style="font-size:0.75rem">${callDeals}</td>
+      <td class="pc-td-mid">${strike}${isAtm ? ' ◉' : ''}</td>
+      <td class="pc-td-put" style="font-size:0.75rem">${putDeals}</td>
+      <td class="pc-td-put" style="font-size:0.75rem">${putChg}</td>
+      <td class="pc-td-put">
+        <div class="pc-oi-bar-wrap" style="flex-direction:row-reverse">
+          <span>${putOI}</span>
+          <div class="pc-oi-bar put" style="width:${putBarW}px"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    <!-- Summary bar -->
+    <div class="pc-summary">
+      <div class="pc-sum-item">
+        <span class="pc-sum-val call-col">${totalCallOI.toLocaleString('he-IL')}</span>
+        <span class="pc-sum-label">סה"כ OI — Call</span>
+      </div>
+      <div class="pc-sum-item">
+        <span class="pc-sum-val ratio-col">${pcRatio}</span>
+        <span class="pc-sum-label">יחס Call/Put</span>
+      </div>
+      <div class="pc-sum-item">
+        <span class="pc-sum-val put-col">${totalPutOI.toLocaleString('he-IL')}</span>
+        <span class="pc-sum-label">סה"כ OI — Put</span>
+      </div>
+    </div>
+    <!-- Visual ratio bar -->
+    <div class="pc-ratio-bar-wrap">
+      <div class="pc-ratio-bar-call" style="width:${callPct}%"></div>
+      <div class="pc-ratio-bar-put"  style="width:${putPct}%"></div>
+    </div>
+    <!-- Table -->
+    <div class="pc-table-wrap">
+      <table class="pc-table">
+        <thead>
+          <tr>
+            <th class="pc-th-call" colspan="3">📈 Call</th>
+            <th class="pc-th-mid">מחיר מימוש</th>
+            <th class="pc-th-put" colspan="3">📉 Put</th>
+          </tr>
+          <tr>
+            <th class="pc-th-call">פוזיציות פתוחות</th>
+            <th class="pc-th-call">שינוי</th>
+            <th class="pc-th-call">עסקות</th>
+            <th class="pc-th-mid">Strike</th>
+            <th class="pc-th-put">עסקות</th>
+            <th class="pc-th-put">שינוי</th>
+            <th class="pc-th-put">פוזיציות פתוחות</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function onPcExpiryChange(val) {
+  selectedExpiry = val;
+  loadPutCall(val);
+}
+
+function fmtChg(n) {
+  if (n == null || n === 0) return '';
+  const sign = n > 0 ? '+' : '';
+  return `<span style="color:${n > 0 ? 'var(--green)' : 'var(--red)'}">${sign}${n.toLocaleString('he-IL')}</span>`;
 }

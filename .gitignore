@@ -1,0 +1,5 @@
+﻿.env
+__pycache__/
+*.pyc
+uvicorn.log
+uvicorn_err.log
