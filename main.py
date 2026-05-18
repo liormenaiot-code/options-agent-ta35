@@ -19,7 +19,7 @@ if not os.getenv("OPENROUTER_API_KEY"):
     warnings.warn("OPENROUTER_API_KEY is not set.", stacklevel=1)
 
 from analyzer import analyze_market_sync
-from scraper import scrape_all, get_expiry_dates, _fetch_tase_putvscall
+from scraper import scrape_all, get_expiry_dates, _fetch_tase_putvscall, _fetch_tradeboost_expiry_dates, TASE_PUTVSCALL_SOURCE_URL
 
 # ── IN-MEMORY CACHE ──────────────────────────────────────────────────
 _cache: dict = {}
@@ -198,12 +198,17 @@ PC_CACHE_TTL = 600  # 10 minutes per expiry date
 async def get_putvscall(
     expiry: str = Query(default=None),
     force: bool = Query(default=False),
+    dates_only: bool = Query(default=False),
 ):
     """
     Returns TASE Put vs Call open interest for the given expiry date.
     Data is live from market.tase.co.il via Playwright interception.
     Results are cached for 10 minutes per expiry date.
     """
+    if dates_only:
+        expiry_dates = await _fetch_tradeboost_expiry_dates()
+        return JSONResponse({"expiry_dates": expiry_dates, "source_url": TASE_PUTVSCALL_SOURCE_URL})
+
     cache_key = expiry or "__default__"
 
     if not force:
@@ -212,7 +217,7 @@ async def get_putvscall(
             return JSONResponse({**entry["data"], "from_cache": True})
 
     try:
-        data = await _fetch_tase_putvscall(expiry_date=expiry)
+        data = await _fetch_tase_putvscall(expiry_date=expiry, force=force)
         _pc_cache[cache_key] = {"data": data, "ts": time.time()}
         return JSONResponse({**data, "from_cache": False})
     except Exception as exc:

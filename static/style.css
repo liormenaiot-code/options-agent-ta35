@@ -1036,6 +1036,10 @@ body::after {
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
+/* Odd number of items — last one spans full width, no gap */
+.bni-row:nth-last-child(1):nth-child(odd) {
+  grid-column: 1 / -1;
+}
 
 .bni-row {
   display: flex;
@@ -1141,6 +1145,39 @@ body::after {
   font-size: 0.68rem;
   color: var(--text-xs);
   white-space: nowrap;
+}
+
+/* כפתור נתח ייעודי לטבלת Put/Call — זהה לכפתור הראשי */
+.pc-analyze-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid rgba(200,212,139,0.3);
+  border-radius: 8px;
+  color: var(--sage);
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0 14px;
+  height: 34px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+.pc-analyze-btn:hover {
+  background: rgba(200,212,139,0.08);
+  border-color: rgba(200,212,139,0.6);
+  color: var(--cream);
+}
+.pc-analyze-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pc-analyze-btn.spinning .pc-analyze-icon {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
 }
 
 .pc-body {
@@ -1288,6 +1325,18 @@ body::after {
   text-align: center;
   color: var(--red);
   font-size: 0.82rem;
+}
+
+.pc-range-note {
+  margin: 8px 12px 4px;
+  padding: 8px 14px;
+  background: rgba(224,112,112,0.08);
+  border: 1px solid rgba(224,112,112,0.25);
+  border-radius: 8px;
+  color: var(--red);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  direction: rtl;
 }
 
 /* ═══════════════════════════════════════════════

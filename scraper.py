@@ -1,10 +1,55 @@
 import asyncio
+import json as _json
 import math
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
+
+# ── DISK CACHE FOR PLAYWRIGHT RESULTS ────────────────────────────────
+_PC_CACHE_DIR = Path(__file__).parent / "pc_cache"
+_PC_CACHE_DIR.mkdir(exist_ok=True)
+
+
+def _pc_disk_path(date_iso: str) -> Path:
+    return _PC_CACHE_DIR / f"{date_iso}.json"
+
+
+def _load_pc_disk(date_iso: str, max_age_minutes: int = 30) -> list[dict] | None:
+    """טוען מהארכיון. max_age_minutes=0 → מחזיר תמיד ללא בדיקת גיל."""
+    path = _pc_disk_path(date_iso)
+    if not path.exists():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = _json.load(f)
+        if max_age_minutes > 0:
+            scraped_at_str = data.get("scraped_at", "")
+            if scraped_at_str:
+                try:
+                    scraped_at = datetime.fromisoformat(scraped_at_str)
+                    age_min = (datetime.now(timezone.utc) - scraped_at).total_seconds() / 60
+                    if age_min > max_age_minutes:
+                        return None  # פג תוקף
+                except Exception:
+                    pass
+        return data.get("items")
+    except Exception:
+        return None
+
+
+def _save_pc_disk(date_iso: str, items: list[dict]) -> None:
+    path = _pc_disk_path(date_iso)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            _json.dump(
+                {"items": items, "scraped_at": datetime.now(timezone.utc).isoformat()},
+                f, ensure_ascii=False, indent=2,
+            )
+    except Exception:
+        pass
 
 HEADERS = {
     "User-Agent": (
@@ -304,6 +349,15 @@ def _scrape_expiry_stats() -> dict:
 
 # ── TASE PUT/CALL OPEN INTEREST (via Playwright) ──────────────────────
 
+# ── TRADEBOOST CONFIG ─────────────────────────────────────────────────
+# מקור ראשי לתאריכי פקיעה מאומתים — מסד הנתונים של TradeBoost
+_TB_SUPABASE_URL = "https://ddwjzjgzhjixamsmavot.supabase.co"
+_TB_ANON_KEY = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkd2p6emd6aGppeGFtc21hdm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI1MDg3NTQsImV4cCI6MjA0ODA4NDc1NH0"
+    ".ozHi_jh_qO2h6RwdyvvBXI0yPuSstgHEcqPEIhLirgA"
+)
+
 _TASE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -317,6 +371,9 @@ _TASE_HEADERS = {
 
 _TASE_EXPIRY_URL  = "https://api.tase.co.il/api/derivatives/fltrputvscallexpdates"
 _TASE_CHART_URL   = "https://api.tase.co.il/api/derivatives/putvscallchartdata"
+
+# מקור רשמי — אתר הבורסה לניירות ערך בתל אביב
+TASE_PUTVSCALL_SOURCE_URL = "https://market.tase.co.il/he/market_data/derivatives/01/major_data/putvscall"
 
 
 def _calc_max_pain(points: list) -> float | None:
@@ -334,86 +391,337 @@ def _calc_max_pain(points: list) -> float | None:
     return best_strike
 
 
-async def _fetch_tase_putvscall(expiry_date: str | None = None) -> dict:
+def _compute_expiry_dates(weeks_ahead: int = 6, active_weekdays: set | None = None) -> list[dict]:
     """
-    Fetches TASE Put vs Call OI + volume directly via api.tase.co.il (no browser needed).
-    expiry_date: DD/MM/YYYY or YYYY-MM-DD. If None, uses nearest monthly expiry.
-    Returns dict with keys: items, expiry_dates, trade_date, max_pain, error.
+    מחשב תאריכי פקיעה עתידיים לפי הימים הפעילים שאומתו מ-TradeBoost.
+    ברירת מחדל: שני–שישי (0–4), עם סימון חודשי לשישי האחרון של כל חודש.
     """
-    result: dict = {
-        "items": [], "expiry_dates": [], "trade_date": None,
-        "max_pain": None, "expiry_date": expiry_date, "error": None,
+    from datetime import date, timedelta
+
+    today = date.today()
+    if active_weekdays is None:
+        active_weekdays = {0, 1, 2, 3, 4}   # Mon-Fri (Python weekday)
+
+    # שישי אחרון של כל חודש = פקיעה חודשית
+    monthly: set[date] = set()
+    for m_offset in range(4):
+        m = today.month + m_offset
+        y = today.year + (m - 1) // 12
+        m = (m - 1) % 12 + 1
+        last = date(y + 1, 1, 1) - timedelta(1) if m == 12 else date(y, m + 1, 1) - timedelta(1)
+        while last.weekday() != 4:
+            last -= timedelta(1)
+        monthly.add(last)
+
+    he_days = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 6: "ראשון"}
+    results: list[dict] = []
+    d = today
+    end = today + timedelta(weeks=weeks_ahead)
+    while d <= end:
+        if d.weekday() in active_weekdays:
+            is_monthly = d in monthly
+            label_type = "חודשי" if is_monthly else "שבועי"
+            results.append({
+                "date":  d.strftime("%d/%m/%Y"),
+                "label": f"{d.strftime('%d/%m/%Y')} ({he_days.get(d.weekday(), '')}) ({label_type})",
+                "type":  "monthly" if is_monthly else "weekly",
+                "iso":   d.isoformat(),
+            })
+        d += timedelta(1)
+    return results
+
+
+async def _fetch_tradeboost_expiry_dates() -> list[dict]:
+    """
+    שולף תאריכי פקיעה אמיתיים מ-TradeBoost Supabase.
+    מחזיר רשומות היסטוריות (שבועיים אחרונים) כדי לאמת את ימי הפקיעה הפעילים,
+    ואז מחשב תאריכים עתידיים לפי אותו תבנית.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+    since = (today - timedelta(days=21)).isoformat()
+
+    url = f"{_TB_SUPABASE_URL}/rest/v1/tlv35_expirations_history"
+    headers = {
+        "apikey": _TB_ANON_KEY,
+        "Authorization": f"Bearer {_TB_ANON_KEY}",
+        "Accept": "application/json",
     }
+    params = {
+        "date": f"gte.{since}",
+        "order": "date.asc",
+        "limit": "60",
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
-            # ── 1. Expiry dates ──────────────────────────────────────
-            r1 = await client.get(
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(url, headers=headers, params=params)
+            if resp.status_code == 200:
+                rows = resp.json()
+                if rows:
+                    # זהה אילו ימי שבוע פעילים לאחרונה
+                    from datetime import date as dt_date
+                    active_weekdays: set[int] = set()
+                    for row in rows:
+                        try:
+                            d = dt_date.fromisoformat(row["date"][:10])
+                            active_weekdays.add(d.weekday())
+                        except Exception:
+                            pass
+                    # הסר יום שבת (5) אם הוא נכנס בטעות
+                    active_weekdays.discard(5)
+                    if active_weekdays:
+                        return _compute_expiry_dates(active_weekdays=active_weekdays)
+    except Exception:
+        pass
+
+    # fallback: שני–שישי (מבוסס על נתוני TradeBoost ידועים)
+    return _compute_expiry_dates()
+
+
+_TASE_BASE_URL = "https://market.tase.co.il/he/market_data/derivatives/01/major_data/putvscall"
+
+
+async def _fetch_tase_expiry_dates() -> list[dict]:
+    """
+    שולף תאריכי פקיעה אמיתיים מ-API של הבורסה (httpx — מהיר, ללא Playwright).
+    זהו מקור האמת: רק תאריכים שקיימים בפועל במסחר.
+    """
+    he_days = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
+    try:
+        from datetime import date as dt_date
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
                 _TASE_EXPIRY_URL,
                 params={"objId": "01", "lang": 1, "dType": 2, "date": ""},
                 headers=_TASE_HEADERS,
             )
-            r1.raise_for_status()
-            dates_raw = r1.json().get("DerivativeExpirationDateItems", [])
-            result["expiry_dates"] = [
-                {
-                    "date":  d["Date"],
-                    "label": f"{d['Date']} ({'חודשי' if d.get('ExpirationDateType') == '02' else 'שבועי'})",
-                    "type":  "monthly" if d.get("ExpirationDateType") == "02" else "weekly",
-                }
-                for d in dates_raw
-            ]
+            if resp.status_code == 200:
+                items_raw = resp.json().get("DerivativeExpirationDateItems", [])
+                results = []
+                for item in items_raw:
+                    # פורמט אפשרי: "2026-05-17T00:00:00" או "17/05/2026"
+                    raw = (item.get("ExpirationDate") or item.get("Date") or "").strip()
+                    if not raw:
+                        continue
+                    try:
+                        if "T" in raw or "-" in raw:
+                            d = dt_date.fromisoformat(raw[:10])
+                            ddmmyyyy = d.strftime("%d/%m/%Y")
+                        else:
+                            parts = raw.split("/")
+                            d = dt_date(int(parts[2]), int(parts[1]), int(parts[0]))
+                            ddmmyyyy = raw
+                        exp_type = item.get("ExpirationTypeName", item.get("Type", "שבועי"))
+                        is_monthly = "חודשי" in str(exp_type)
+                        results.append({
+                            "date":  ddmmyyyy,
+                            "label": f"{ddmmyyyy} ({he_days.get(d.weekday(), '')}) ({'חודשי' if is_monthly else 'שבועי'})",
+                            "type":  "monthly" if is_monthly else "weekly",
+                            "iso":   d.isoformat(),
+                        })
+                    except Exception:
+                        pass
+                if results:
+                    return results
+    except Exception:
+        pass
+    # Fallback: חישוב שני–שישי
+    return _compute_expiry_dates()
 
-            # ── 2. Resolve target expiry → YYYY-MM-DD ───────────────
-            target_iso: str | None = None
-            if expiry_date:
-                raw = expiry_date.split(" (")[0].strip()   # strip label suffix
-                if "/" in raw:                              # DD/MM/YYYY → YYYY-MM-DD
-                    p = raw.split("/")
-                    if len(p) == 3:
-                        yr = p[2] if len(p[2]) == 4 else "20" + p[2]
-                        target_iso = f"{yr}-{p[1]}-{p[0]}"
-                else:
-                    target_iso = raw                        # already YYYY-MM-DD
+
+async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list[dict]:
+    """
+    שולף טבלת Put/Call מאתר הבורסה באמצעות Playwright.
+    הלוגיקה:
+      1. בדוק ארכיון דיסק
+      2. פתח את עמוד הבורסה
+      3. בחר את תאריך הפקיעה מה-dropdown
+      4. לחץ "סנן רשימה"
+      5. המתן לטבלה ← זה מה שחסר קודם!
+      6. סרוק וחזור
+    force=True → מדלג על קאש ומסרק מחדש.
+    """
+    max_age = 2 if force else 30
+    cached = _load_pc_disk(target_iso, max_age_minutes=max_age)
+    if cached is not None:
+        return cached
+
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return []
+
+    # המר YYYY-MM-DD → DD/MM/YYYY לזיהוי ב-dropdown
+    try:
+        y, m, d = target_iso.split("-")
+        target_ddmmyyyy = f"{d}/{m}/{y}"
+    except Exception:
+        target_ddmmyyyy = ""
+
+    def parse_int(s: str) -> int:
+        s = str(s or "").strip().replace(",", "").replace("—", "").replace("-", "")
+        try:
+            return int(float(s)) if s else 0
+        except Exception:
+            return 0
+
+    def parse_rate(s: str) -> float | None:
+        s = str(s or "").strip().replace(",", "")
+        if not s or s in ("—", "-", ""):
+            return None
+        try:
+            return float(s)
+        except Exception:
+            return None
+
+    items: list[dict] = []
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            page = await browser.new_page()
+            await page.goto(_TASE_BASE_URL, wait_until="domcontentloaded", timeout=45_000)
+
+            # המתן ל-dropdown ולכך שיתאכלס אסינכרונית (לא מספיק שקיים — צריך שיהיו options בפועל)
+            await page.wait_for_selector("select#filterOptions", timeout=25_000)
+            for _ in range(40):
+                opt_count = await page.evaluate(
+                    "() => document.querySelector('select#filterOptions')?.options?.length || 0"
+                )
+                if opt_count > 1:
+                    break
+                await page.wait_for_timeout(500)
+
+            # בחר את התאריך הרצוי מה-dropdown
+            if target_ddmmyyyy:
+                options = await page.evaluate("""
+                    () => Array.from(document.querySelector('select#filterOptions').options)
+                        .map(o => ({value: o.value, text: o.text.trim()}))
+                """)
+                matched_value = None
+                for opt in options:
+                    if target_ddmmyyyy in opt["text"]:
+                        matched_value = str(opt["value"])
+                        break
+                if matched_value is not None:
+                    await page.select_option("select#filterOptions", value=matched_value)
+
+            # לחץ "סנן רשימה" — זה הצעד שחסר קודם!
+            filter_btn = page.locator("button", has_text="סנן רשימה").first
+            await filter_btn.click(timeout=10_000)
+
+            # המתן לטבלה (Shobsbox מרנדר אחרי JS)
+            for _ in range(40):
+                count = await page.evaluate(
+                    "() => document.querySelectorAll('table tbody tr').length"
+                )
+                if count >= 3:
+                    break
+                await page.wait_for_timeout(500)
+
+            # גלול עד סוף הטבלה כדי לטעון את כל השורות (lazy-load)
+            prev_count = 0
+            for _ in range(30):
+                await page.evaluate("""
+                    () => {
+                        const tbl = document.querySelector('table');
+                        if (tbl) tbl.scrollIntoView(false);
+                        window.scrollTo(0, document.body.scrollHeight);
+                    }
+                """)
+                await page.wait_for_timeout(600)
+                new_count = await page.evaluate(
+                    "() => document.querySelectorAll('table tbody tr').length"
+                )
+                if new_count == prev_count:
+                    break  # אין שורות חדשות — הטעינה הסתיימה
+                prev_count = new_count
+
+            rows_data: list[list[str]] = await page.evaluate("""
+                () => Array.from(document.querySelectorAll('table tbody tr')).map(
+                    row => Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim())
+                )
+            """)
+
+            for cells in rows_data:
+                if len(cells) < 11:
+                    continue
+                # [put_open_pos, put_vol, put_last, put_time, put_name,
+                #  strike,
+                #  call_name, call_time, call_last, call_vol, call_open_pos]
+                strike = parse_int(cells[5])
+                if strike < 100:
+                    continue
+                items.append({
+                    "strike":         strike,
+                    "call_last_rate": parse_rate(cells[8]),
+                    "call_vol":       parse_int(cells[9]),
+                    "call_open_pos":  parse_int(cells[10]),
+                    "put_last_rate":  parse_rate(cells[2]),
+                    "put_vol":        parse_int(cells[1]),
+                    "put_open_pos":   parse_int(cells[0]),
+                })
+        finally:
+            await browser.close()
+
+    _save_pc_disk(target_iso, items)
+    return items
+
+
+async def _fetch_tase_putvscall(expiry_date: str | None = None, force: bool = False) -> dict:
+    """
+    שולף נתוני Put vs Call מאתר הבורסה דרך Playwright.
+    תאריכי פקיעה מגיעים מ-TradeBoost (מקור ראשי).
+    force=True: מדלג על כל קאש ומסרק מחדש.
+    expiry_date: DD/MM/YYYY or YYYY-MM-DD. אם None — ברירת מחדל לתאריך הקרוב.
+    """
+    computed_dates = await _fetch_tradeboost_expiry_dates()
+    result: dict = {
+        "items": [], "expiry_dates": computed_dates, "trade_date": None,
+        "max_pain": None, "expiry_date": expiry_date, "error": None,
+        "source_url": TASE_PUTVSCALL_SOURCE_URL,
+    }
+    try:
+        # ── Resolve target expiry → YYYY-MM-DD ───────────────────────
+        target_iso: str | None = None
+        if expiry_date:
+            raw = expiry_date.split(" (")[0].strip()
+            if "/" in raw:
+                p = raw.split("/")
+                if len(p) == 3:
+                    yr = p[2] if len(p[2]) == 4 else "20" + p[2]
+                    target_iso = f"{yr}-{p[1]}-{p[0]}"
             else:
-                # Default: nearest monthly, else nearest weekly
-                monthly = next((d for d in dates_raw if d.get("ExpirationDateType") == "02"), None)
-                chosen  = monthly or (dates_raw[0] if dates_raw else None)
-                if chosen:
-                    p = chosen["Date"].split("/")
-                    target_iso = f"{p[2]}-{p[1]}-{p[0]}"
+                target_iso = raw
+        else:
+            # Default: first upcoming date
+            if computed_dates:
+                target_iso = computed_dates[0].get("iso") or _ddmmyyyy_to_iso(computed_dates[0]["date"])
 
-            if not target_iso:
-                result["error"] = "no expiry dates available"
-                return result
+        if not target_iso:
+            result["error"] = "no expiry dates available"
+            return result
 
-            # ── 3. Chart data ────────────────────────────────────────
-            r2 = await client.post(
-                _TASE_CHART_URL,
-                headers={**_TASE_HEADERS, "Content-Type": "application/json"},
-                json={"objId": "01", "lang": 1, "dType": 2,
-                      "exprDate": target_iso, "inQType": 2, "updType": 1},
-            )
-            r2.raise_for_status()
-            body = r2.json()
-            result["trade_date"] = body.get("TradeDate")
-            points = body.get("PointsOfChart", [])  # [strike, call_oi, put_oi, call_vol, put_vol]
+        result["expiry_date"] = target_iso
 
-            result["items"] = [
-                {
-                    "strike":        int(p[0]),
-                    "call_open_pos": int(p[1]),
-                    "put_open_pos":  int(p[2]),
-                    "call_vol":      int(p[3]),
-                    "put_vol":       int(p[4]),
-                }
-                for p in points if len(p) >= 5
-            ]
-            result["max_pain"] = _calc_max_pain(points)
+        # ── All dates → Playwright DOM scrape ────────────────────────
+        result["items"]      = await _fetch_weekly_playwright(target_iso, force=force)
+        result["trade_date"] = target_iso
 
     except Exception as exc:
         result["error"] = str(exc)
 
     return result
+
+
+def _ddmmyyyy_to_iso(date_str: str) -> str | None:
+    """Convert DD/MM/YYYY → YYYY-MM-DD."""
+    parts = date_str.split("/")
+    if len(parts) == 3:
+        yr = parts[2] if len(parts[2]) == 4 else "20" + parts[2]
+        return f"{yr}-{parts[1]}-{parts[0]}"
+    return None
 
 
 # ── MAIN ──────────────────────────────────────────────────────────────

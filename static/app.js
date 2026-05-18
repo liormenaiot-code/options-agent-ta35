@@ -1,27 +1,36 @@
 'use strict';
 
-let isLoading    = false;
-let stepTimer    = null;
-let warmupTimer  = null;
+let isLoading      = false;
+let stepTimer      = null;
+let warmupTimer    = null;
 let selectedExpiry = null;
-let hasAnalysis  = false;
+let pcSelectedExpiry = null;  // expiry chosen in Put/Call dropdown; only used on "נתח" click
+let hasAnalysis    = false;
 
 const FETCH_TIMEOUT_MS = 200_000; // 3:20 min hard cap
 
 document.addEventListener('DOMContentLoaded', () => {
-  loadExpiryDates().then(() => {
-    refreshData();
-    loadPutCall();  // load Put/Call independently
-  });
+  loadExpiryDates().then(() => refreshData());
 });
 
-// ── EXPIRY (kept for API param, no UI dropdown) ─────────────────────
+// ── EXPIRY DATES — fetch real TASE dates for the Put/Call dropdown ──
 async function loadExpiryDates() {
   try {
-    const resp = await fetch('/api/expiry-dates');
+    const resp = await fetch('/api/putvscall?dates_only=true');
     if (!resp.ok) return;
-    const { expiry_dates } = await resp.json();
-    if (expiry_dates?.length) selectedExpiry = expiry_dates[0].label;
+    const data = await resp.json();
+    const expSelect = document.getElementById('pc-expiry-select');
+    const allDates = data.expiry_dates || [];
+    if (expSelect && allDates.length) {
+      expSelect.innerHTML = allDates.map(d =>
+        `<option value="${esc(d.date)}">${esc(d.label)}</option>`
+      ).join('');
+      // Default to first date that is strictly in the future (skip today/past expired options)
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const nextDate = allDates.find(d => d.iso > todayIso) || allDates[0];
+      pcSelectedExpiry   = nextDate.date;
+      expSelect.value    = nextDate.date;
+    }
   } catch {}
 }
 
@@ -62,6 +71,7 @@ async function refreshData(force = false) {
     }
     const data = await resp.json();
     renderAll(data);
+    loadPutCall(pcSelectedExpiry, force);
   } catch (err) {
     if (err.name === 'AbortError') showError('הניתוח לקח יותר מדי זמן — נסה שוב');
     else showError(err.message);
@@ -155,7 +165,16 @@ function renderAll(data) {
 
   if (analysis) {
     renderVolatility(analysis.volatility);
-    renderBreakingNews(analysis.breaking_news);
+    // Ensure exactly 4 breaking news items for a clean 2×2 grid
+    let bn = analysis.breaking_news || [];
+    if (bn.length < 4 && analysis.top_news?.length) {
+      const extra = analysis.top_news
+        .filter(n => !bn.some(b => b.headline === n.headline))
+        .slice(0, 4 - bn.length)
+        .map(n => ({ headline: n.headline, direction: n.impact || 'ניטרלי', urgency: 'נמוכה' }));
+      bn = [...bn, ...extra];
+    }
+    renderBreakingNews(bn);
     renderRisks(analysis.key_risks);
     renderNews(analysis.top_news);
     renderDisclaimer(analysis.disclaimer);
@@ -447,41 +466,33 @@ async function loadPutCall(expiry = null, force = false) {
 }
 
 function renderPutCall(data) {
-  const body      = document.getElementById('pc-body');
-  const expSelect = document.getElementById('pc-expiry-select');
-  const dateLbl   = document.getElementById('pc-trade-date');
+  const body    = document.getElementById('pc-body');
+  const dateLbl = document.getElementById('pc-trade-date');
   if (!body) return;
 
   const items = data.items || [];
-  
-  // Populate expiry dropdown if we have dates
-  if (expSelect && data.expiry_dates?.length) {
-    const currentVal = expSelect.value;
-    expSelect.innerHTML = data.expiry_dates.map(d => 
-      `<option value="${esc(d.date)}" ${d.date === data.expiry_date ? 'selected' : ''}>${esc(d.label)}</option>`
-    ).join('');
-    
-    // If we didn't have a selection yet, or if it changed
-    if (data.expiry_date) selectedExpiry = data.expiry_date;
-  }
 
   if (!items.length) {
-    body.innerHTML = '<div class="pc-loading">אין נתונים זמינים לתאריך זה</div>';
+    body.innerHTML = `<div class="pc-loading" style="padding:32px;line-height:1.7">
+      <div style="font-size:1.1rem;margin-bottom:8px">אין נתונים לתאריך זה</div>
+      <div style="font-size:0.82rem;color:var(--text-dim)">ייתכן שאין עדיין מסחר פעיל לתאריך הפקיעה שנבחר.</div>
+    </div>`;
+    if (dateLbl) dateLbl.textContent = '';
     return;
   }
 
   if (dateLbl) dateLbl.textContent = data.trade_date ? `נכון ל: ${data.trade_date}` : '';
 
-  // Compute summary totals
+  // Summary totals
   let totalCallOI = 0, totalPutOI = 0;
   items.forEach(r => {
     totalCallOI += r.call_open_pos || 0;
     totalPutOI  += r.put_open_pos  || 0;
   });
-  const totalOI  = totalCallOI + totalPutOI || 1;
-  const pcRatio  = totalPutOI > 0 ? (totalCallOI / totalPutOI).toFixed(2) : '—';
-  const callPct  = Math.round(totalCallOI / totalOI * 100);
-  const putPct   = 100 - callPct;
+  const totalOI = totalCallOI + totalPutOI || 1;
+  const pcRatio = totalPutOI > 0 ? (totalCallOI / totalPutOI).toFixed(2) : '—';
+  const callPct = Math.round(totalCallOI / totalOI * 100);
+  const putPct  = 100 - callPct;
 
   // Max OI for bar scaling
   const maxOI = Math.max(...items.map(r => Math.max(r.call_open_pos || 0, r.put_open_pos || 0)), 1);
@@ -497,20 +508,25 @@ function renderPutCall(data) {
     });
   }
 
-  // Build rows — sorted by strike ascending
+  // Note if current price is above the highest listed strike
+  const maxStrike = Math.max(...items.map(r => r.strike || 0));
+  const aboveRangeNote = (currentPrice > 0 && maxStrike > 0 && currentPrice > maxStrike)
+    ? `<div class="pc-range-note">⚠ מחיר המדד הנוכחי (${currentPrice.toLocaleString('he-IL')}) גבוה ממחיר המימוש המקסימלי המפורסם לתאריך זה (${maxStrike.toLocaleString('he-IL')}). הבורסה אינה מפרסמת סדרות מימוש חדשות לאמצע תקופה.</div>`
+    : '';
+
   const sorted = [...items].sort((a, b) => a.strike - b.strike);
 
   const rows = sorted.map(r => {
-    const isAtm = atmStrike && r.strike === atmStrike;
+    const isAtm    = atmStrike && r.strike === atmStrike;
     const atmClass = isAtm ? ' class="pc-atm"' : '';
+    const strike   = r.strike?.toLocaleString('he-IL') || '—';
 
-    const callOI     = r.call_open_pos != null ? r.call_open_pos.toLocaleString('he-IL') : '—';
-    const callChg    = r.call_pos_change != null ? fmtChg(r.call_pos_change) : '';
-    const callDeals  = r.call_deals != null ? r.call_deals : '—';
-    const putOI      = r.put_open_pos  != null ? r.put_open_pos.toLocaleString('he-IL')  : '—';
-    const putChg     = r.put_pos_change  != null ? fmtChg(r.put_pos_change)  : '';
-    const putDeals   = r.put_deals  != null ? r.put_deals  : '—';
-    const strike     = r.strike?.toLocaleString('he-IL') || '—';
+    const callOI   = r.call_open_pos != null ? r.call_open_pos.toLocaleString('he-IL') : '—';
+    const callVol  = r.call_vol      != null ? r.call_vol.toLocaleString('he-IL')      : '—';
+    const callLast = r.call_last_rate != null ? Math.round(r.call_last_rate).toLocaleString('he-IL') : '—';
+    const putOI    = r.put_open_pos  != null ? r.put_open_pos.toLocaleString('he-IL')  : '—';
+    const putVol   = r.put_vol       != null ? r.put_vol.toLocaleString('he-IL')       : '—';
+    const putLast  = r.put_last_rate  != null ? Math.round(r.put_last_rate).toLocaleString('he-IL') : '—';
 
     const callBarW = Math.round((r.call_open_pos || 0) / maxOI * 60);
     const putBarW  = Math.round((r.put_open_pos  || 0) / maxOI * 60);
@@ -522,11 +538,11 @@ function renderPutCall(data) {
           <div class="pc-oi-bar call" style="width:${callBarW}px"></div>
         </div>
       </td>
-      <td class="pc-td-call" style="font-size:0.75rem">${callChg}</td>
-      <td class="pc-td-call" style="font-size:0.75rem">${callDeals}</td>
+      <td class="pc-td-call" style="font-size:0.8rem">${callVol}</td>
+      <td class="pc-td-call" style="font-size:0.8rem">${callLast}</td>
       <td class="pc-td-mid">${strike}${isAtm ? ' ◉' : ''}</td>
-      <td class="pc-td-put" style="font-size:0.75rem">${putDeals}</td>
-      <td class="pc-td-put" style="font-size:0.75rem">${putChg}</td>
+      <td class="pc-td-put" style="font-size:0.8rem">${putLast}</td>
+      <td class="pc-td-put" style="font-size:0.8rem">${putVol}</td>
       <td class="pc-td-put">
         <div class="pc-oi-bar-wrap" style="flex-direction:row-reverse">
           <span>${putOI}</span>
@@ -537,7 +553,7 @@ function renderPutCall(data) {
   }).join('');
 
   body.innerHTML = `
-    <!-- Summary bar -->
+    ${aboveRangeNote}
     <div class="pc-summary">
       <div class="pc-sum-item">
         <span class="pc-sum-val call-col">${totalCallOI.toLocaleString('he-IL')}</span>
@@ -552,12 +568,10 @@ function renderPutCall(data) {
         <span class="pc-sum-label">סה"כ OI — Put</span>
       </div>
     </div>
-    <!-- Visual ratio bar -->
     <div class="pc-ratio-bar-wrap">
       <div class="pc-ratio-bar-call" style="width:${callPct}%"></div>
       <div class="pc-ratio-bar-put"  style="width:${putPct}%"></div>
     </div>
-    <!-- Table -->
     <div class="pc-table-wrap">
       <table class="pc-table">
         <thead>
@@ -568,11 +582,11 @@ function renderPutCall(data) {
           </tr>
           <tr>
             <th class="pc-th-call">פוזיציות פתוחות</th>
-            <th class="pc-th-call">שינוי</th>
-            <th class="pc-th-call">עסקות</th>
+            <th class="pc-th-call">מחזור</th>
+            <th class="pc-th-call">שער אחרון</th>
             <th class="pc-th-mid">Strike</th>
-            <th class="pc-th-put">עסקות</th>
-            <th class="pc-th-put">שינוי</th>
+            <th class="pc-th-put">שער אחרון</th>
+            <th class="pc-th-put">מחזור</th>
             <th class="pc-th-put">פוזיציות פתוחות</th>
           </tr>
         </thead>
@@ -582,12 +596,21 @@ function renderPutCall(data) {
 }
 
 function onPcExpiryChange(val) {
-  selectedExpiry = val;
-  loadPutCall(val);
+  pcSelectedExpiry = val;
+  const dateLbl = document.getElementById('pc-trade-date');
+  if (dateLbl) dateLbl.textContent = 'לחץ "נתח" לטעינת הנתונים עבור תאריך זה';
 }
 
-function fmtChg(n) {
-  if (n == null || n === 0) return '';
-  const sign = n > 0 ? '+' : '';
-  return `<span style="color:${n > 0 ? 'var(--green)' : 'var(--red)'}">${sign}${n.toLocaleString('he-IL')}</span>`;
+// ── כפתור "נתח" ייעודי לטבלת Put/Call ──────────────────────────────
+// מסרק מחדש רק את נתוני האופציות לתאריך הנבחר — ללא נגיעה בשאר הדשבורד
+async function refreshPutCall() {
+  const btn = document.getElementById('pc-analyze-btn');
+  if (btn) { btn.disabled = true; btn.classList.add('spinning'); }
+
+  try {
+    await loadPutCall(pcSelectedExpiry, true);  // force=true → סריקת Playwright מחדש
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
+  }
 }
+
