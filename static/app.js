@@ -1,11 +1,14 @@
 'use strict';
 
-let isLoading      = false;
-let stepTimer      = null;
-let warmupTimer    = null;
-let selectedExpiry = null;
+let isLoading        = false;
+let stepTimer        = null;
+let warmupTimer      = null;
+let selectedExpiry   = null;
 let pcSelectedExpiry = null;  // expiry chosen in Put/Call dropdown; only used on "נתח" click
-let hasAnalysis    = false;
+let hasAnalysis      = false;
+
+let _activeStocksTab = 'all';
+let _stocksData      = null;
 
 const FETCH_TIMEOUT_MS = 200_000; // 3:20 min hard cap
 
@@ -72,6 +75,7 @@ async function refreshData(force = false) {
     const data = await resp.json();
     renderAll(data);
     loadPutCall(pcSelectedExpiry, force);
+    loadStocks(force);
   } catch (err) {
     if (err.name === 'AbortError') showError('הניתוח לקח יותר מדי זמן — נסה שוב');
     else showError(err.message);
@@ -612,5 +616,101 @@ async function refreshPutCall() {
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
   }
+}
+
+// ── TA-35 STOCKS ────────────────────────────────────────────────────
+
+async function loadStocks(force = false) {
+  const body = document.getElementById('stocks-body');
+  if (!body) return;
+
+  // Use cached data if available and not forcing refresh
+  if (!force && _stocksData) {
+    renderStocks(_stocksData);
+    return;
+  }
+
+  body.innerHTML = '<div class="stocks-loading">⏳ טוען מחירי מניות...</div>';
+
+  try {
+    const params = new URLSearchParams();
+    if (force) params.set('force', 'true');
+    const resp = await fetch(`/api/stocks?${params.toString()}`);
+    if (!resp.ok) throw new Error(`שגיאת שרת: ${resp.status}`);
+    const data = await resp.json();
+    _stocksData = data;
+    renderStocks(data);
+
+    // Update timestamp
+    const upd = document.getElementById('stocks-updated');
+    if (upd && data.fetched_at) {
+      const d = new Date(data.fetched_at);
+      upd.textContent = `עודכן: ${d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })}`;
+    }
+  } catch (err) {
+    body.innerHTML = `<div class="pc-error">⚠ שגיאה בטעינת מניות: ${esc(err.message)}</div>`;
+  }
+}
+
+function switchStocksTab(tab) {
+  _activeStocksTab = tab;
+  document.querySelectorAll('.stocks-tab').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById(`tab-${tab}`);
+  if (activeBtn) activeBtn.classList.add('active');
+  if (_stocksData) renderStocks(_stocksData);
+}
+
+function renderStocks(data) {
+  const body = document.getElementById('stocks-body');
+  if (!body || !data?.stocks) return;
+
+  let stocks = [...data.stocks];
+  if (_activeStocksTab === 'us') {
+    stocks = stocks.filter(s => s.dual_listed);
+  }
+
+  // Sort by % change descending (biggest gainers first, losers last)
+  stocks.sort((a, b) => (b.change_pct ?? -999) - (a.change_pct ?? -999));
+
+  if (!stocks.length) {
+    body.innerHTML = '<div class="stocks-loading">לא נמצאו מניות</div>';
+    return;
+  }
+
+  const cards = stocks.map(s => {
+    const hasPrice  = s.price != null;
+    const changePct = s.change_pct;
+    const sign = (changePct != null && changePct > 0) ? '+' : '';
+    const cls  = changePct > 0.05 ? 'up' : changePct < -0.05 ? 'down' : 'flat';
+
+    const priceHtml = hasPrice
+      ? `<span class="sc-price">${fmtNum(s.price, 2)}</span>`
+      : `<span class="sc-price sc-no-data">—</span>`;
+
+    const changeHtml = (hasPrice && changePct != null)
+      ? `<span class="sc-change ${cls}">${sign}${changePct.toFixed(2)}%</span>`
+      : `<span class="sc-change flat">—</span>`;
+
+    const usBadge = s.dual_listed
+      ? `<span class="sc-us-badge">${esc(s.us_exchange)}: ${esc(s.us_ticker)}</span>`
+      : '';
+
+    const cardCls = hasPrice ? ` ${cls}` : '';
+
+    return `
+      <div class="stock-card${cardCls}">
+        <div class="sc-top">
+          <span class="sc-ticker">${esc(s.tase_ticker)}</span>
+          ${usBadge}
+        </div>
+        <div class="sc-name">${esc(s.name_he)}</div>
+        <div class="sc-bottom">
+          ${priceHtml}
+          ${changeHtml}
+        </div>
+      </div>`;
+  }).join('');
+
+  body.innerHTML = `<div class="stocks-grid">${cards}</div>`;
 }
 
