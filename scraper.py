@@ -767,6 +767,100 @@ async def scrape_all() -> dict:
     }
 
 
+# ── TA-35 COMPONENT STOCKS ───────────────────────────────────────────
+# (name_he, yahoo_tase_ticker, us_ticker_or_None, us_exchange_or_None)
+TA35_STOCKS: list[tuple] = [
+    # (name_he, yahoo_tase_ticker, us_ticker, us_exchange)
+    # Yahoo Finance TASE tickers verified May 2026
+    ("בזק",               "BEZQ.TA",   None,    None),
+    ("כלל עסקי ביטוח",   "CLIS.TA",   None,    None),
+    ("ניו-מד אנרג",       "NWMD.TA",   None,    None),   # DEDR on investing.com
+    ("דלק קבוצה",         "DLEKG.TA",  None,    None),
+    ("דיסקונט",           "DSCT.TA",   None,    None),
+    ("אלביט מערכות",      "ESLT.TA",   "ESLT",  "NASDAQ"),
+    ("בינלאומי",          "FIBI.TA",   None,    None),
+    ("הראל השקעות",       "HARL.TA",   None,    None),   # HRAL on investing.com
+    ("איי.סי.אל",         "ICL.TA",    "ICL",   "NYSE"),
+    ("לאומי",             "LUMI.TA",   None,    None),
+    ("מגדל ביטוח",        "MGDL.TA",   None,    None),
+    ("מליסרון",           "MLSR.TA",   None,    None),
+    ("מנורה מב החזקות",   "MMHD.TA",   None,    None),   # MNRH on investing.com
+    ("מזרחי טפחות",       "MZTF.TA",   None,    None),
+    ("נייס",              "NICE.TA",   "NICE",  "NASDAQ"),
+    ("הפניקס",            "PHOE.TA",   None,    None),   # PNIX on investing.com
+    ("פועלים",            "POLI.TA",   None,    None),
+    ("שופרסל",            "SAE.TA",    None,    None),   # SPRS on investing.com
+    ("שטראוס גרופ",       "STRS.TA",   None,    None),
+    ("טבע",               "TEVA.TA",   "TEVA",  "NYSE"),
+    ("טאואר",             "TSEM.TA",   "TSEM",  "NASDAQ"),
+    ("קמטק",              "CAMT.TA",   "CAMT",  "NASDAQ"),
+    ("דמרי",              "DIMRI.TA",  None,    None),   # DMRI on investing.com
+    ("נובה",              "NVMI.TA",   "NVMI",  "NASDAQ"),
+    ("עזריאלי קבוצה",     "AZRG.TA",   None,    None),
+    ("ביג",               "BIG.TA",    None,    None),
+    ("מגה אור",           "MGOR.TA",   None,    None),   # MGAO on investing.com
+    ("אנלייט אנרגיה",     "ENLT.TA",   None,    None),
+    ("קנון הולדינגס",     "KEN.TA",    None,    None),   # KNON on investing.com
+    ("שפיר הנדסה",        "SPEN.TA",   None,    None),   # SPIR on investing.com
+    ("אורמת טכנולוגיות",  "ORA.TA",    "ORA",   "NYSE"),
+    ("או.פי.סי אנרגיה",   "OPCE.TA",   None,    None),   # OPCI on investing.com
+    ("נאוויטס פטרו",      "NVPT.TA",   None,    None),   # NVTP on investing.com
+    ("הבורסה לניע בתא",   "TASE.TA",   None,    None),
+    ("נקסט ויז׳ן",        "NXSN.TA",   None,    None),   # NXVS on investing.com
+]
+
+
+async def _fetch_one_stock(client, name_he: str, tase_ticker: str,
+                           us_ticker, us_exchange) -> dict:
+    """Fetch price for a single TASE stock via Yahoo Finance v8 chart."""
+    base = {
+        "name_he":     name_he,
+        "tase_ticker": tase_ticker.replace(".TA", ""),
+        "us_ticker":   us_ticker,
+        "us_exchange": us_exchange,
+        "price":       None,
+        "change_pct":  None,
+        "dual_listed": us_ticker is not None,
+    }
+    url = (
+        f"https://query2.finance.yahoo.com/v8/finance/chart/{tase_ticker}"
+        "?interval=1d&range=1d"
+    )
+    try:
+        resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10)
+        if resp.status_code != 200:
+            return base
+        meta = resp.json()["chart"]["result"][0]["meta"]
+        price = meta.get("regularMarketPrice")
+        prev  = meta.get("chartPreviousClose") or meta.get("previousClose") or price
+        if price and prev:
+            # Yahoo Finance returns TASE prices in ILA (Israeli Agorot = 1/100 ILS).
+            # Divide by 100 to get the real shekel (₪) price shown on the TASE.
+            if meta.get("currency") == "ILA":
+                price = price / 100
+                prev  = prev  / 100
+            pct = (price - prev) / prev * 100
+            base["price"]      = round(float(price), 2)
+            base["change_pct"] = round(float(pct),   2)
+    except Exception:
+        pass
+    return base
+
+
+async def _fetch_ta35_stock_prices(client) -> list[dict]:
+    """
+    Fetch real-time prices for all TA-35 component stocks via Yahoo Finance v8/chart.
+    All 35 requests are fired concurrently.
+    Returns list of dicts: name_he, tase_ticker, us_ticker, us_exchange,
+                           price, change_pct, dual_listed.
+    """
+    tasks = [
+        _fetch_one_stock(client, name_he, tase_ticker, us_ticker, us_exchange)
+        for name_he, tase_ticker, us_ticker, us_exchange in TA35_STOCKS
+    ]
+    return list(await asyncio.gather(*tasks))
+
+
 def get_expiry_dates() -> list[dict]:
     from datetime import date, timedelta
     today = date.today()
