@@ -139,7 +139,15 @@ async def _finnhub_news(client):
 
 # ── HEBREW NEWS SCRAPERS ──────────────────────────────────────────────
 
-async def _scrape_news(client, url, source_name, base_url):
+_JUNK_HEADLINES = {
+    "מדיניות פרטיות", "תנאי שימוש", "אודות", "צור קשר",
+    "נגישות", "מפת האתר", "RSS", "פרסמו אצלנו", "הצהרת נגישות",
+    "כל הזכויות שמורות", "כניסה לחשבון", "הרשמה", "עזרה",
+    "שלח לחבר", "הדפס", "תגובות", "שתף", "כתבות נוספות",
+}
+
+
+async def _scrape_news(client, url, source_name, base_url, article_pattern="/article/"):
     """Scrape article links from a Hebrew news page."""
     try:
         resp = await client.get(url, headers=HEADERS, follow_redirects=True, timeout=TIMEOUT)
@@ -148,11 +156,13 @@ async def _scrape_news(client, url, source_name, base_url):
         articles, seen = [], set()
         for a in soup.find_all("a", href=True):
             href = a.get("href", "")
-            if "/article/" not in href or href in seen:
+            if article_pattern not in href or href in seen:
                 continue
             seen.add(href)
             headline = a.get_text(strip=True)
-            if not headline or len(headline) < 8:
+            if not headline or len(headline) < 12:
+                continue
+            if headline in _JUNK_HEADLINES:
                 continue
             full_url = f"{base_url}{href}" if href.startswith("/") else href
             articles.append({"headline": headline, "url": full_url, "source": source_name})
@@ -574,27 +584,30 @@ async def _fetch_tase_expiry_dates() -> list[dict]:
     return _compute_expiry_dates()
 
 
-async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list[dict]:
+async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict:
     """
     שולף טבלת Put/Call מאתר הבורסה באמצעות Playwright.
-    הלוגיקה:
-      1. בדוק ארכיון דיסק
-      2. פתח את עמוד הבורסה
-      3. בחר את תאריך הפקיעה מה-dropdown
-      4. לחץ "סנן רשימה"
-      5. המתן לטבלה ← זה מה שחסר קודם!
-      6. סרוק וחזור
-    force=True → מדלג על קאש ומסרק מחדש.
+    מחזיר dict עם:
+      - items: רשימת strikes
+      - expiry_dates: תאריכי פקיעה אמיתיים מה-TASE dropdown
+      - actual_expiry: התאריך שנבחר בפועל
+
+    תיקונים ב-v2:
+      1. בוחר "יום מסחר אחרון" (לא קודם)
+      2. אם התאריך לא בדרופדאון → בוחר הראשון הזמין
+      3. call_last_rate / 100 → נקודות אינדקס
+      4. מחזיר גם את תאריכי הפקיעה האמיתיים מה-TASE
     """
     max_age = 2 if force else 30
     cached = _load_pc_disk(target_iso, max_age_minutes=max_age)
     if cached is not None:
-        return cached
+        # cache returns items list for backward compat
+        return {"items": cached, "expiry_dates": [], "actual_expiry": target_iso}
 
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        return []
+        return {"items": [], "expiry_dates": [], "actual_expiry": target_iso}
 
     # המר YYYY-MM-DD → DD/MM/YYYY לזיהוי ב-dropdown
     try:
@@ -611,22 +624,36 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list
             return 0
 
     def parse_rate(s: str) -> float | None:
+        """שער אחרון מה-TASE — מחלקים ב-100 לקבלת נקודות אינדקס."""
         s = str(s or "").strip().replace(",", "")
         if not s or s in ("—", "-", ""):
             return None
         try:
-            return float(s)
+            val = float(s)
+            return round(val / 100, 2)   # agorot → index points
         except Exception:
             return None
 
     items: list[dict] = []
+    tase_expiry_dates: list[dict] = []
+    actual_expiry = target_iso
+    he_days = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
+
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
         try:
-            page = await browser.new_page()
+            ctx = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                locale="he-IL",
+            )
+            page = await ctx.new_page()
             await page.goto(_TASE_BASE_URL, wait_until="domcontentloaded", timeout=45_000)
 
-            # המתן ל-dropdown ולכך שיתאכלס אסינכרונית (לא מספיק שקיים — צריך שיהיו options בפועל)
+            # ── המתן ל-dropdown עם options ────────────────────────────
             await page.wait_for_selector("select#filterOptions", timeout=25_000)
             for _ in range(40):
                 opt_count = await page.evaluate(
@@ -636,26 +663,86 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list
                     break
                 await page.wait_for_timeout(500)
 
-            # בחר את התאריך הרצוי מה-dropdown
-            if target_ddmmyyyy:
-                options = await page.evaluate("""
-                    () => Array.from(document.querySelector('select#filterOptions').options)
-                        .map(o => ({value: o.value, text: o.text.trim()}))
-                """)
-                matched_value = None
-                for opt in options:
-                    if target_ddmmyyyy in opt["text"]:
-                        matched_value = str(opt["value"])
-                        break
-                if matched_value is not None:
-                    await page.select_option("select#filterOptions", value=matched_value)
+            # ── בחר "יום מסחר אחרון" (radio button) ──────────────────
+            await page.evaluate("""
+                () => {
+                    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+                    // מחפש את ה-radio שמכיל "אחרון" בתווית שלו
+                    for (const r of radios) {
+                        const label = r.closest('label') || document.querySelector(`label[for="${r.id}"]`);
+                        const txt = label ? label.innerText : (r.nextSibling ? r.nextSibling.textContent : '');
+                        if (txt && txt.includes('אחרון')) {
+                            r.click();
+                            r.dispatchEvent(new Event('change', {bubbles: true}));
+                            return;
+                        }
+                    }
+                    // fallback: click first radio
+                    if (radios.length > 0) { radios[0].click(); }
+                }
+            """)
+            await page.wait_for_timeout(300)
 
-            # לחץ "סנן רשימה" — זה הצעד שחסר קודם!
+            # ── קרא את כל תאריכי הפקיעה האמיתיים מה-TASE ────────────
+            raw_options = await page.evaluate("""
+                () => Array.from(document.querySelector('select#filterOptions').options)
+                    .map(o => ({value: o.value, text: o.text.trim()}))
+            """)
+
+            # בנה רשימת תאריכים מהאפשרויות (דלג על "הכל" = value 0)
+            from datetime import date as dt_date
+            for opt in raw_options:
+                if opt["value"] == "0" or not opt["text"]:
+                    continue
+                # text format: "29/05/2026 שבועי" or "28/06/2026 חודשי"
+                parts = opt["text"].split()
+                raw_date = parts[0] if parts else ""
+                exp_type = parts[1] if len(parts) > 1 else "שבועי"
+                if not raw_date or "/" not in raw_date:
+                    continue
+                try:
+                    dp = raw_date.split("/")
+                    d_obj = dt_date(int(dp[2]), int(dp[1]), int(dp[0]))
+                    tase_expiry_dates.append({
+                        "date":  raw_date,
+                        "label": f"{raw_date} ({he_days.get(d_obj.weekday(), '')}) ({exp_type})",
+                        "type":  "monthly" if "חודשי" in exp_type else "weekly",
+                        "iso":   d_obj.isoformat(),
+                        "dropdown_value": str(opt["value"]),
+                    })
+                except Exception:
+                    pass
+
+            # ── בחר תאריך בדרופדאון ──────────────────────────────────
+            matched_value = None
+            actual_expiry = target_iso
+
+            # נסה למצוא את התאריך המבוקש
+            for opt in raw_options:
+                if target_ddmmyyyy and target_ddmmyyyy in opt["text"]:
+                    matched_value = str(opt["value"])
+                    break
+
+            # אם לא נמצא → בחר את הראשון הזמין (לא "הכל")
+            if matched_value is None:
+                for opt in raw_options:
+                    if opt["value"] != "0" and opt["text"]:
+                        matched_value = str(opt["value"])
+                        # עדכן actual_expiry לתאריך שנבחר בפועל
+                        if tase_expiry_dates:
+                            actual_expiry = tase_expiry_dates[0]["iso"]
+                        break
+
+            if matched_value is not None:
+                await page.select_option("select#filterOptions", value=matched_value)
+                await page.wait_for_timeout(300)
+
+            # ── לחץ "סנן רשימה" ───────────────────────────────────────
             filter_btn = page.locator("button", has_text="סנן רשימה").first
             await filter_btn.click(timeout=10_000)
 
-            # המתן לטבלה (Shobsbox מרנדר אחרי JS)
-            for _ in range(40):
+            # ── המתן לטבלה ────────────────────────────────────────────
+            for _ in range(50):
                 count = await page.evaluate(
                     "() => document.querySelectorAll('table tbody tr').length"
                 )
@@ -663,9 +750,9 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list
                     break
                 await page.wait_for_timeout(500)
 
-            # גלול עד סוף הטבלה כדי לטעון את כל השורות (lazy-load)
+            # ── גלול לטעינת כל השורות (lazy-load) ────────────────────
             prev_count = 0
-            for _ in range(30):
+            for _ in range(40):
                 await page.evaluate("""
                     () => {
                         const tbl = document.querySelector('table');
@@ -673,14 +760,15 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list
                         window.scrollTo(0, document.body.scrollHeight);
                     }
                 """)
-                await page.wait_for_timeout(600)
+                await page.wait_for_timeout(500)
                 new_count = await page.evaluate(
                     "() => document.querySelectorAll('table tbody tr').length"
                 )
                 if new_count == prev_count:
-                    break  # אין שורות חדשות — הטעינה הסתיימה
+                    break
                 prev_count = new_count
 
+            # ── סרוק שורות ────────────────────────────────────────────
             rows_data: list[list[str]] = await page.evaluate("""
                 () => Array.from(document.querySelectorAll('table tbody tr')).map(
                     row => Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim())
@@ -694,7 +782,7 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list
                 #  strike,
                 #  call_name, call_time, call_last, call_vol, call_open_pos]
                 strike = parse_int(cells[5])
-                if strike < 100:
+                if strike < 500:   # skip synthetic/invalid rows
                     continue
                 items.append({
                     "strike":         strike,
@@ -705,11 +793,12 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> list
                     "put_vol":        parse_int(cells[1]),
                     "put_open_pos":   parse_int(cells[0]),
                 })
+
         finally:
             await browser.close()
 
-    _save_pc_disk(target_iso, items)
-    return items
+    _save_pc_disk(actual_expiry, items)
+    return {"items": items, "expiry_dates": tase_expiry_dates, "actual_expiry": actual_expiry}
 
 
 async def _fetch_tase_putvscall(expiry_date: str | None = None, force: bool = False) -> dict:
@@ -749,8 +838,24 @@ async def _fetch_tase_putvscall(expiry_date: str | None = None, force: bool = Fa
         result["expiry_date"] = target_iso
 
         # ── All dates → Playwright DOM scrape ────────────────────────
-        result["items"]      = await _fetch_weekly_playwright(target_iso, force=force)
-        result["trade_date"] = target_iso
+        pw_result = await _fetch_weekly_playwright(target_iso, force=force)
+        result["items"]        = pw_result["items"]
+        result["trade_date"]   = pw_result.get("actual_expiry", target_iso)
+        result["actual_expiry"] = pw_result.get("actual_expiry", target_iso)
+        # Prefer real TASE expiry dates over computed ones
+        if pw_result.get("expiry_dates"):
+            result["expiry_dates"] = pw_result["expiry_dates"]
+
+        # ── Max Pain calculation ───────────────────────────────────────
+        items_list = result["items"]
+        if items_list:
+            # Build compact [strike, call_oi, put_oi] list for _calc_max_pain
+            mp_points = [
+                [it["strike"], it.get("call_open_pos", 0), it.get("put_open_pos", 0)]
+                for it in items_list
+                if it.get("strike", 0) > 0
+            ]
+            result["max_pain"] = _calc_max_pain(mp_points)
 
     except Exception as exc:
         result["error"] = str(exc)
@@ -774,7 +879,7 @@ async def scrape_all() -> dict:
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         (
             fh_quote, fh_news,
-            ynet_eco, calcalist,
+            ynet_eco, calcalist, globes,
             yh_price, technicals,
             vta35,
         ) = await asyncio.gather(
@@ -786,6 +891,10 @@ async def scrape_all() -> dict:
             _scrape_news(client,
                 "https://www.calcalist.co.il/home/0,7340,L-8,00.html",
                 "כלכליסט", "https://www.calcalist.co.il"),
+            _scrape_news(client,
+                "https://www.globes.co.il/news/markets.aspx",
+                "גלובס", "https://www.globes.co.il",
+                article_pattern="article.aspx"),
             _yahoo_price(client),
             _fetch_technicals(client),
             _fetch_vta35(client),
@@ -797,7 +906,7 @@ async def scrape_all() -> dict:
     market_data = fh_quote or yh_price
 
     # Combine news: Finnhub global + Hebrew sources
-    news_sources = [fh_news, ynet_eco, calcalist]
+    news_sources = [fh_news, ynet_eco, calcalist, globes]
 
     return {
         "news_sources":  news_sources,

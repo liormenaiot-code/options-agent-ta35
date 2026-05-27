@@ -485,7 +485,22 @@ function renderPutCall(data) {
     return;
   }
 
-  if (dateLbl) dateLbl.textContent = data.trade_date ? `נכון ל: ${data.trade_date}` : '';
+  // Format date label nicely
+  let dateDisplay = '';
+  if (data.actual_expiry || data.trade_date) {
+    const raw = data.actual_expiry || data.trade_date;
+    // Convert YYYY-MM-DD → DD/MM/YYYY for display
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const [y, m, d] = raw.split('-');
+      dateDisplay = `${d}/${m}/${y}`;
+    } else {
+      dateDisplay = raw;
+    }
+  }
+  if (dateLbl) dateLbl.textContent = dateDisplay ? `נכון ל: ${dateDisplay}` : '';
+
+  // Max Pain
+  const maxPain = data.max_pain;
 
   // Summary totals
   let totalCallOI = 0, totalPutOI = 0;
@@ -556,7 +571,24 @@ function renderPutCall(data) {
     </tr>`;
   }).join('');
 
+  // Max Pain banner
+  let maxPainHtml = '';
+  if (maxPain) {
+    const mpDistPct = currentPrice > 0
+      ? ((maxPain - currentPrice) / currentPrice * 100).toFixed(2)
+      : null;
+    const mpDir = mpDistPct !== null
+      ? (parseFloat(mpDistPct) > 0 ? `▲ ${mpDistPct}% מעל המחיר` : `▼ ${Math.abs(mpDistPct)}% מתחת למחיר`)
+      : '';
+    maxPainHtml = `<div class="pc-max-pain">
+      <span class="pc-mp-label">🎯 Max Pain</span>
+      <span class="pc-mp-val">${maxPain.toLocaleString('he-IL')}</span>
+      ${mpDir ? `<span class="pc-mp-dist">${mpDir}</span>` : ''}
+    </div>`;
+  }
+
   body.innerHTML = `
+    ${maxPainHtml}
     ${aboveRangeNote}
     <div class="pc-summary">
       <div class="pc-sum-item">
@@ -597,6 +629,14 @@ function renderPutCall(data) {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+
+  // Auto-scroll to ATM row after render
+  if (atmStrike) {
+    requestAnimationFrame(() => {
+      const atmRow = body.querySelector('tr.pc-atm');
+      if (atmRow) atmRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
 }
 
 function onPcExpiryChange(val) {

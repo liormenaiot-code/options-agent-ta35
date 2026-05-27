@@ -1205,6 +1205,34 @@ body::after {
   overflow-x: auto;
 }
 
+/* Max Pain banner */
+.pc-max-pain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, rgba(250,200,0,0.12), rgba(250,150,0,0.08));
+  border-bottom: 1px solid rgba(250,200,0,0.25);
+  border-top: 1px solid rgba(250,200,0,0.15);
+  direction: rtl;
+}
+.pc-mp-label {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.pc-mp-val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fac800;
+  font-feature-settings: "tnum";
+}
+.pc-mp-dist {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
 /* Summary bar */
 .pc-summary {
   display: flex;
