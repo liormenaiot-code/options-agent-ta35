@@ -847,53 +847,6 @@ function renderArbitrage(data) {
     ${rate}
   </div>`;
 
-  // Stock table — sort by absolute arb gap (largest first)
-  const sorted = [...stocks].sort((a, b) =>
-    Math.abs(b.arb_pct_current ?? 0) - Math.abs(a.arb_pct_current ?? 0)
-  );
-
-  const rows = sorted.map((s, idx) => {
-    const tasePrice = s.tase_price != null
-      ? fmtNum(s.tase_price, s.tase_price >= 10000 ? 0 : 2)
-      : '—';
-    const usPrice = s.us_price_ils != null
-      ? fmtNum(s.us_price_ils, s.us_price_ils >= 10000 ? 0 : 2)
-      : '—';
-
-    const taChg = s.ta_change_pct != null ? (() => {
-      const cls  = _chgCls(s.ta_change_pct);
-      const sign = s.ta_change_pct > 0 ? '+' : '';
-      return `<span class="arb-ta-chg ${cls}">${sign}${s.ta_change_pct.toFixed(2)}%</span>`;
-    })() : '<span class="arb-ta-chg flat">—</span>';
-
-    return `<tr class="arb-row">
-      <td class="arb-num">${idx + 1}</td>
-      <td class="arb-name">${esc(s.name_he || '')}</td>
-      <td class="arb-ticker">${esc(s.us_ticker || '')}</td>
-      <td class="arb-price">${tasePrice}</td>
-      <td class="arb-price">${usPrice}</td>
-      <td class="arb-pct">${_arbChip(s.arb_pct_current)}</td>
-      <td class="arb-pct">${_arbChip(s.arb_pct_initial)}</td>
-      <td class="arb-pct">${taChg}</td>
-    </tr>`;
-  }).join('');
-
-  const tableHtml = stocks.length ? `<div class="arb-table-wrap">
-    <table class="arb-table">
-      <thead><tr>
-        <th class="arb-th-num">#</th>
-        <th>שם מניה</th>
-        <th>US</th>
-        <th class="arb-th-price">TASE ₪</th>
-        <th class="arb-th-price">US (₪)</th>
-        <th class="arb-th-pct">פער עדכני</th>
-        <th class="arb-th-pct">פער התחלתי</th>
-        <th class="arb-th-pct">שינוי ת"א</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>` : '';
-
-  body.innerHTML = summaryHtml + tableHtml;
+  body.innerHTML = summaryHtml;
 }
 
