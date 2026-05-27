@@ -773,7 +773,7 @@ async function loadArbitrage(force = false) {
 
   if (!force && _arbData) { renderArbitrage(_arbData); return; }
 
-  body.innerHTML = '<div class="arb-loading">⏳ שולף נתוני ארביטראז' מגלובס...</div>';
+  body.innerHTML = `<div class="arb-loading">⏳ שולף נתוני ארביטראז' מגלובס...</div>`;
 
   try {
     const params = new URLSearchParams();
