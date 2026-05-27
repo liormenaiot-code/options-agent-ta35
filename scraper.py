@@ -1137,18 +1137,34 @@ async def _fetch_one_stock(client, name_he: str, tase_ticker: str,
         resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10)
         if resp.status_code != 200:
             return base
-        meta = resp.json()["chart"]["result"][0]["meta"]
-        price = meta.get("regularMarketPrice")
-        prev  = meta.get("chartPreviousClose") or meta.get("previousClose") or price
-        if price and prev:
+        data = resp.json()
+        result = data["chart"]["result"][0]
+        meta   = result["meta"]
+
+        price      = meta.get("regularMarketPrice")
+        prev_close = meta.get("chartPreviousClose")
+
+        if price is not None:
             # Yahoo Finance returns TASE prices in ILA (Israeli Agorot = 1/100 ILS).
             # Divide by 100 to get the real shekel (₪) price shown on the TASE.
             if meta.get("currency") == "ILA":
                 price = price / 100
-                prev  = prev  / 100
-            pct = (price - prev) / prev * 100
-            base["price"]      = round(float(price), 2)
-            base["change_pct"] = round(float(pct),   2)
+                if prev_close:
+                    prev_close = prev_close / 100
+            base["price"] = round(float(price), 2)
+
+        # Prefer Yahoo's own authoritative change% field; fall back to manual
+        # calculation from chartPreviousClose when market is closed/unavailable.
+        pct_raw = meta.get("regularMarketChangePercent")
+        if pct_raw is not None:
+            base["change_pct"] = round(float(pct_raw), 2)
+        elif price is not None and prev_close and prev_close != 0:
+            base["change_pct"] = round((price - prev_close) / prev_close * 100, 2)
+
+        # Store source URL for UI verification badge
+        base["source"] = f"https://finance.yahoo.com/quote/{tase_ticker}"
+        base["fetched_at_epoch"] = int(__import__('time').time())
+
     except Exception:
         pass
     return base

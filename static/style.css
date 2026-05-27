@@ -80,6 +80,11 @@
 /* Loader spin */
 @keyframes spin { to { transform: rotate(360deg); } }
 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
 /* Live badge blink */
 @keyframes blink-live {
   0%, 100% { opacity: 1; }
@@ -146,6 +151,45 @@ body::after {
 }
 
 .hidden { display: none !important; }
+
+/* ═══════════════════════════════════════════════
+   LIVE VERIFICATION BANNER
+   ═══════════════════════════════════════════════ */
+.live-verify-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  padding: 11px 20px;
+  margin: 0 0 6px;
+  border-radius: var(--radius);
+  background: rgba(74, 222, 128, 0.06);
+  border: 1px solid rgba(74, 222, 128, 0.22);
+  font-size: 0.78rem;
+  direction: rtl;
+  animation: fadeIn 0.4s ease;
+}
+.lvb-icon  { font-size: 1.1rem; flex-shrink: 0; }
+.lvb-title { font-weight: 800; color: var(--green); letter-spacing: 0.04em; flex-shrink: 0; }
+.lvb-sources { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.lvb-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(74, 222, 128, 0.09);
+  border: 1px solid rgba(74, 222, 128, 0.20);
+  color: rgba(74, 222, 128, 0.9);
+  font-size: 0.72rem; font-weight: 700; white-space: nowrap;
+}
+.lvb-chip a { color: inherit; text-decoration: none; }
+.lvb-chip a:hover { text-decoration: underline; }
+.lvb-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--green);
+  animation: blink-live 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.lvb-time  { font-size: 0.7rem; color: var(--text-dim); margin-right: auto; white-space: nowrap; }
+.lvb-count { font-size: 0.7rem; color: var(--green); font-weight: 700; }
 
 /* ═══════════════════════════════════════════════
    SETUP WIZARD

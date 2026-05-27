@@ -215,10 +215,15 @@ async def get_stocks(force: bool = Query(default=False)):
         async with httpx.AsyncClient(timeout=12) as client:
             stocks = await _fetch_ta35_stock_prices(client)
 
+        ok_count   = sum(1 for s in stocks if s.get("price") is not None)
         payload = {
-            "stocks":     stocks,
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "from_cache": False,
+            "stocks":       stocks,
+            "fetched_at":   datetime.now(timezone.utc).isoformat(),
+            "from_cache":   False,
+            "source":       "Yahoo Finance v8 — regularMarketPrice + regularMarketChangePercent",
+            "source_url":   "https://finance.yahoo.com/",
+            "verified_count": ok_count,
+            "total_count":  len(stocks),
         }
         _stocks_cache = {"data": payload, "ts": time.time()}
         return JSONResponse(payload)
