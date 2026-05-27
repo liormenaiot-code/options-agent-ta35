@@ -18,8 +18,14 @@ if not os.getenv("OPENROUTER_API_KEY"):
     import warnings
     warnings.warn("OPENROUTER_API_KEY is not set.", stacklevel=1)
 
+import httpx
+
 from analyzer import analyze_market_sync
-from scraper import scrape_all, get_expiry_dates, _fetch_tase_putvscall, _fetch_tradeboost_expiry_dates, TASE_PUTVSCALL_SOURCE_URL
+from scraper import (
+    scrape_all, get_expiry_dates,
+    _fetch_tase_putvscall, _fetch_tradeboost_expiry_dates, TASE_PUTVSCALL_SOURCE_URL,
+    _fetch_ta35_stock_prices,
+)
 
 # ── IN-MEMORY CACHE ──────────────────────────────────────────────────
 _cache: dict = {}
@@ -188,6 +194,36 @@ async def get_analysis(
 @app.post("/api/refresh")
 async def refresh_analysis():
     return await get_analysis(force=True)
+
+
+# ── TA-35 STOCKS CACHE ───────────────────────────────────────────────
+_stocks_cache: dict = {"data": None, "ts": 0.0}
+STOCKS_CACHE_TTL = 300  # 5 minutes
+
+
+@app.get("/api/stocks")
+async def get_stocks(force: bool = Query(default=False)):
+    """Returns real-time prices for all TA-35 component stocks."""
+    global _stocks_cache
+
+    if not force:
+        entry = _stocks_cache
+        if entry["data"] and time.time() - entry["ts"] < STOCKS_CACHE_TTL:
+            return JSONResponse({**entry["data"], "from_cache": True})
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            stocks = await _fetch_ta35_stock_prices(client)
+
+        payload = {
+            "stocks":     stocks,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "from_cache": False,
+        }
+        _stocks_cache = {"data": payload, "ts": time.time()}
+        return JSONResponse(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ── PUT/CALL LIVE DATA ────────────────────────────────────────────────

@@ -10,7 +10,7 @@ SYSTEM_PROMPT = """\
 
 1. כיוון השוק: שורי/דובי/ניטרלי + רמת ביטחון (0-100) + הסיבה העיקרית במשפט אחד.
 2. תנודתיות: נמוכה/בינונית/גבוהה + הסבר קצר. אם VTA35 סופק — בסס עליו בעיקר.
-3. שלוש החדשות הבולטות שהכי עלולות להזיז את ת"א 35 — ממוינות לפי חשיבות יורדת.
+3. ארבע החדשות הבולטות שהכי עלולות להזיז את ת"א 35 — ממוינות לפי חשיבות יורדת. חובה בדיוק 4 פריטים.
 4. גורמי סיכון: 3 סיכונים קצרים וספציפיים.
 5. 5 חדשות נוספות רלוונטיות לת"א 35 עם השפעה.
 
@@ -18,7 +18,7 @@ SYSTEM_PROMPT = """\
 אל תמליץ על אסטרטגיה, סטרייק, או עסקה. ניתוח עובדות בלבד.
 
 פורמט מדויק — JSON בלבד, ללא markdown:
-{"market_direction":{"signal":"שורי|דובי|ניטרלי","confidence_pct":0-100,"reasoning":"משפט אחד"},"volatility":{"level":"נמוכה|בינונית|גבוהה","explanation":"משפט אחד"},"breaking_news":[{"headline":"כותרת","direction":"שורי|דובי|ניטרלי","urgency":"גבוהה|בינונית|נמוכה"},{"headline":"כותרת","direction":"שורי|דובי|ניטרלי","urgency":"גבוהה|בינונית|נמוכה"},{"headline":"כותרת","direction":"שורי|דובי|ניטרלי","urgency":"גבוהה|בינונית|נמוכה"}],"key_risks":["סיכון א","סיכון ב","סיכון ג"],"top_news":[{"headline":"כותרת","source":"מקור","url":"https://...","impact":"שורי|דובי|ניטרלי"}],"disclaimer":"המידע לצרכי לימוד בלבד — אין ייעוץ השקעות"}
+{"market_direction":{"signal":"שורי|דובי|ניטרלי","confidence_pct":0-100,"reasoning":"משפט אחד"},"volatility":{"level":"נמוכה|בינונית|גבוהה","explanation":"משפט אחד"},"breaking_news":[{"headline":"כותרת","direction":"שורי|דובי|ניטרלי","urgency":"גבוהה|בינונית|נמוכה"},{"headline":"כותרת","direction":"שורי|דובי|ניטרלי","urgency":"גבוהה|בינונית|נמוכה"},{"headline":"כותרת","direction":"שורי|דובי|ניטרלי","urgency":"גבוהה|בינונית|נמוכה"},{"headline":"כותרת","direction":"שורי|דובי|ניטרלי","urgency":"גבוהה|בינונית|נמוכה"}],"key_risks":["סיכון א","סיכון ב","סיכון ג"],"top_news":[{"headline":"כותרת","source":"מקור","url":"https://...","impact":"שורי|דובי|ניטרלי"}],"disclaimer":"המידע לצרכי לימוד בלבד — אין ייעוץ השקעות"}
 """
 
 
@@ -131,36 +131,51 @@ def analyze_market_sync(scraped_data: dict, expiry: str | None = None, profile: 
 
     user_message = _build_user_message(scraped_data, expiry, profile)
 
-    try:
-        response = client.chat.completions.create(
-            model="minimax/minimax-m2.5:free",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": user_message},
-            ],
-            max_tokens=500,
-            temperature=0.15,
-        )
+    # Models tried in order — first success wins
+    MODELS = [
+        "google/gemma-4-31b-it:free",
+        "openai/gpt-oss-20b:free",
+        "openai/gpt-oss-120b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "minimax/minimax-m2.5:free",
+    ]
 
-        raw = response.choices[0].message.content or ""
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```", 2)[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
+    last_error = "no models available"
+    for model in MODELS:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_message},
+                ],
+                max_tokens=800,
+                temperature=0.15,
+            )
+
+            raw = response.choices[0].message.content or ""
             raw = raw.strip()
-        analysis = json.loads(raw)
+            if raw.startswith("```"):
+                raw = raw.split("```", 2)[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+            analysis = json.loads(raw)
 
-        return {
-            "analysis": analysis,
-            "usage": {
-                "input_tokens":  response.usage.prompt_tokens if response.usage else 0,
-                "output_tokens": response.usage.completion_tokens if response.usage else 0,
-            },
-            "error": None,
-        }
+            return {
+                "analysis": analysis,
+                "usage": {
+                    "input_tokens":  response.usage.prompt_tokens if response.usage else 0,
+                    "output_tokens": response.usage.completion_tokens if response.usage else 0,
+                },
+                "model_used": model,
+                "error": None,
+            }
 
-    except json.JSONDecodeError as exc:
-        return {"analysis": None, "error": f"JSON parse error: {exc}"}
-    except Exception as exc:
-        return {"analysis": None, "error": f"OpenRouter error: {exc}"}
+        except json.JSONDecodeError as exc:
+            return {"analysis": None, "error": f"JSON parse error: {exc}"}
+        except Exception as exc:
+            last_error = f"OpenRouter error ({model}): {exc}"
+            continue  # try next model
+
+    return {"analysis": None, "error": last_error}

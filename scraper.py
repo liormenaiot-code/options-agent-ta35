@@ -227,29 +227,72 @@ def _calc_bollinger(closes, window=20, num_std=2):
     }
 
 
-async def _fetch_vta35(client):
+async def _fetch_vta35(_client=None):
     """
     VTA35 — מדד הפחד הישראלי (Tel Aviv Volatility Index).
-    Scrapes live from investing.com as Yahoo Finance is unreliable.
+    Uses Playwright (headless Chromium) to bypass Cloudflare on investing.com.
+    Extracts price from the live DOM element [data-test="instrument-price-last"]
+    and prev-close from [data-test="prevClose"].
+    Falls back to FAQ JSON-LD regex if DOM elements not found.
     """
+    import re
     try:
-        url = "https://il.investing.com/indices/tase-vta35"
-        resp = await client.get(url, headers=HEADERS, timeout=TIMEOUT)
-        resp.raise_for_status()
-        
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(resp.text, "html.parser")
-        price_el = soup.find(attrs={"data-test": "instrument-price-last"})
-        
-        if not price_el:
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            ctx = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                locale="he-IL",
+            )
+            page = await ctx.new_page()
+            await page.goto(
+                "https://il.investing.com/indices/tase-vta35",
+                wait_until="domcontentloaded",
+                timeout=25_000,
+            )
+
+            # Wait for the live price element to appear
+            try:
+                await page.wait_for_selector(
+                    '[data-test="instrument-price-last"]', timeout=10_000
+                )
+            except Exception:
+                pass  # fall through to regex
+
+            html = await page.content()
+            await browser.close()
+
+        # ── Current price — live DOM element ──────────────────────
+        m_price = re.search(
+            r'data-test="instrument-price-last"[^>]*>\s*([\d.,]+)', html
+        )
+        if not m_price:
+            # Fallback: FAQ JSON-LD schema "VTA35 הוא 18.94."
+            m_price = re.search(r"VTA35 הוא ([\d.]+)", html)
+        if not m_price:
             return None
-            
-        price = float(price_el.text.replace(',', ''))
-        
+        price = float(m_price.group(1).replace(",", ""))
+
+        # ── Previous close ─────────────────────────────────────────
+        m_prev = re.search(
+            r'data-test="prevClose"[^>]*>.*?<span[^>]*>\s*([\d.]+)\s*</span>',
+            html, re.DOTALL,
+        )
+        prev_close = float(m_prev.group(1)) if m_prev else None
+
+        change_pct = None
+        if prev_close and prev_close != 0:
+            change_pct = round((price - prev_close) / prev_close * 100, 2)
+
         return {
             "value":      round(price, 2),
-            "prev_close": None,
-            "change_pct": None,
+            "prev_close": prev_close,
+            "change_pct": change_pct,
             "source":     "Investing.com",
         }
     except Exception:
