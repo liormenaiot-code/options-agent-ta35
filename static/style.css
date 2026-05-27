@@ -315,13 +315,13 @@ body::after {
 .wizard-start-btn:hover { opacity: 0.9; transform: translateY(-1px); }
 
 /* ═══════════════════════════════════════════════
-   LOADING OVERLAY
+   LOADING OVERLAY — CPU Architecture
    ═══════════════════════════════════════════════ */
 #loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(9, 9, 11, 0.92);
-  backdrop-filter: blur(16px);
+  background: rgba(9, 9, 11, 0.94);
+  backdrop-filter: blur(20px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -332,44 +332,132 @@ body::after {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 40px;
+  gap: 32px;
+  width: min(480px, 90vw);
 }
 
-.load-ring {
-  width: 72px;
-  height: 72px;
-  border: 2px solid var(--border2);
-  border-top-color: var(--cyan);
-  border-right-color: var(--sage);
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-  box-shadow: 0 0 28px var(--tan-glow);
+/* CPU SVG container */
+.load-cpu-wrap {
+  width: 100%;
+  max-width: 420px;
+  color: rgba(255, 255, 255, 0.18);   /* drives currentColor in SVG paths */
 }
+.load-cpu-svg { display: block; overflow: visible; }
 
-.load-steps { display: flex; flex-direction: column; gap: 18px; }
-
-.lstep {
+/* Text block */
+.load-text-block {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  font-size: 0.92rem;
+  gap: 10px;
+  width: 100%;
+  direction: rtl;
+}
+
+.load-headline {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--white);
+  text-align: center;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.load-subline {
+  font-size: 0.82rem;
   color: var(--text-dim);
+  margin: 0;
+  min-height: 1.2em;
+  text-align: center;
   transition: color 0.3s;
 }
 
-.lstep.active { color: var(--cream); }
-.lstep.done   { color: var(--sage); }
-
-.lstep-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--border2);
-  transition: background 0.3s, box-shadow 0.3s;
-  flex-shrink: 0;
+/* Progress bar row */
+.load-pct-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  direction: ltr;    /* bar fills left→right regardless of RTL page */
 }
 
-.lstep.active .lstep-dot { background: var(--tan);  box-shadow: 0 0 10px var(--tan);  }
-.lstep.done   .lstep-dot { background: var(--sage); box-shadow: 0 0 10px var(--sage); }
+.load-pct-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border2);
+  overflow: hidden;
+}
+
+.load-pct-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan), var(--indigo));
+  box-shadow: 0 0 10px var(--cyan-glow);
+  transition: width 0.25s ease-out;
+}
+
+.load-pct-num {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--cyan);
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── CPU Architecture path animation classes ──────────────── */
+.cpu-architecture {
+  offset-anchor: 10px 0px;
+  animation: animation-path;
+  animation-iteration-count: infinite;
+  animation-timing-function: cubic-bezier(0.75, -0.01, 0, 0.99);
+}
+.cpu-line-1 {
+  offset-path: path("M 10 20 h 79.5 q 5 0 5 5 v 30");
+  animation-duration: 5s;
+  animation-delay: 1s;
+}
+.cpu-line-2 {
+  offset-path: path("M 180 10 h -69.7 q -5 0 -5 5 v 40");
+  animation-delay: 6s;
+  animation-duration: 2s;
+}
+.cpu-line-3 {
+  offset-path: path("M 130 20 v 21.8 q 0 5 -5 5 h -25");
+  animation-delay: 4s;
+  animation-duration: 6s;
+}
+.cpu-line-4 {
+  offset-path: path("M 170 80 v -21.8 q 0 -5 -5 -5 h -65");
+  animation-delay: 3s;
+  animation-duration: 3s;
+}
+.cpu-line-5 {
+  offset-path: path("M 135 65 h 15 q 5 0 5 5 v 10 q 0 5 -5 5 h -39.8 q -5 0 -5 -5 v -35");
+  animation-delay: 9s;
+  animation-duration: 4s;
+}
+.cpu-line-6 {
+  offset-path: path("M 94.8 95 v -46");
+  animation-delay: 3s;
+  animation-duration: 7s;
+}
+.cpu-line-7 {
+  offset-path: path("M 88 88 v -15 q 0 -5 -5 -5 h -10 q -5 0 -5 -5 v -5 q 0 -5 5 -5 h 28");
+  animation-delay: 4s;
+  animation-duration: 4s;
+}
+.cpu-line-8 {
+  offset-path: path("M 30 30 h 25 q 5 0 5 5 v 6.5 q 0 5 5 5 h 35");
+  animation-delay: 3s;
+  animation-duration: 3s;
+}
+@keyframes animation-path {
+  0%   { offset-distance: 0%; }
+  100% { offset-distance: 100%; }
+}
 
 /* ═══════════════════════════════════════════════
    HEADER

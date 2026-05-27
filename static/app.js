@@ -1,8 +1,7 @@
 'use strict';
 
-let isLoading        = false;
-let stepTimer        = null;
-let warmupTimer      = null;
+let isLoading    = false;
+let warmupTimer  = null;
 let selectedExpiry   = null;
 let pcSelectedExpiry = null;  // expiry chosen in Put/Call dropdown; only used on "נתח" click
 let hasAnalysis      = false;
@@ -53,7 +52,7 @@ async function refreshData(force = false) {
   if (hdrBtn) { hdrBtn.disabled = true; hdrBtn.querySelector('.hdr-refresh-icon').textContent = '↻'; }
   overlay.classList.remove('hidden');
   errBnr.classList.add('hidden');
-  animateSteps();
+  startPctCounter();
 
   // Switch to warmup UX after 12 s (cold start)
   const warmupSwitch = setTimeout(() => showWarmupUX(), 12_000);
@@ -84,7 +83,7 @@ async function refreshData(force = false) {
   } finally {
     clearTimeout(warmupSwitch);
     clearTimeout(hardCap);
-    clearTimeout(stepTimer);
+    stopPctCounter();
     stopWarmupUX();
     isLoading = false;
     btn.disabled = false;
@@ -94,39 +93,54 @@ async function refreshData(force = false) {
   }
 }
 
+// ── PERCENTAGE COUNTER ─────────────────────────────────────────────
+let _pct      = 0;
+let _pctTimer = null;
+
+function _updatePct(val) {
+  const num = document.getElementById('load-pct-num');
+  const bar = document.getElementById('load-pct-bar');
+  if (num) num.textContent = Math.round(val) + '%';
+  if (bar) bar.style.width  = val + '%';
+}
+
+function startPctCounter() {
+  _pct = 0;
+  _updatePct(0);
+  // easeOut: eat 4.5% of remaining gap every 250 ms → fast start, slows near 95%
+  _pctTimer = setInterval(() => {
+    _pct += (95 - _pct) * 0.045;
+    _updatePct(_pct);
+  }, 250);
+}
+
+function stopPctCounter() {
+  if (_pctTimer) { clearInterval(_pctTimer); _pctTimer = null; }
+  _updatePct(100);
+  setTimeout(() => _updatePct(0), 700);
+}
+
 // ── WARMUP UX ──────────────────────────────────────────────────────
 function showWarmupUX() {
-  const el = document.querySelector('.load-steps');
-  if (!el) return;
-  el.innerHTML = `
-    <div class="warmup-msg">
-      <div class="warmup-title">🔥 מאתחל את הסוכן</div>
-      <div class="warmup-sub">הטעינה הראשונה לוקחת עד 2 דקות.</div>
-      <div class="warmup-sub">הפעמים הבאות יהיו מיידיות.</div>
-      <div id="warmup-counter" class="warmup-counter">⏱ 120 שניות</div>
-    </div>`;
+  const sub = document.getElementById('load-sub-line');
   let secs = 120;
+  if (sub) sub.textContent = '🔥 טעינה ראשונה — עד 2 דקות';
   warmupTimer = setInterval(() => {
     secs--;
-    const counter = document.getElementById('warmup-counter');
     if (secs > 0) {
-      if (counter) counter.textContent = `⏱ ${secs} שניות`;
+      if (sub) sub.textContent = `⏱ עוד ~${secs} שניות`;
     } else {
       clearInterval(warmupTimer);
       warmupTimer = null;
-      if (counter) counter.textContent = 'ממתין לתשובה...';
+      if (sub) sub.textContent = 'ממתין לתשובה...';
     }
   }, 1000);
 }
 
 function stopWarmupUX() {
   if (warmupTimer) { clearInterval(warmupTimer); warmupTimer = null; }
-  const el = document.querySelector('.load-steps');
-  if (!el) return;
-  el.innerHTML = `
-    <div class="lstep" id="lstep-1"><span class="lstep-dot"></span>אוסף נתוני שוק בזמן אמת</div>
-    <div class="lstep" id="lstep-2"><span class="lstep-dot"></span>סורק כותרות מהמקורות</div>
-    <div class="lstep" id="lstep-3"><span class="lstep-dot"></span>מנתח עם בינה מלאכותית</div>`;
+  const sub = document.getElementById('load-sub-line');
+  if (sub) sub.textContent = 'טוען';
 }
 
 // ── LIVE VERIFICATION BANNER ───────────────────────────────────────
@@ -175,31 +189,6 @@ function showVerifyBanner() {
     <span class="lvb-time">עודכן: ${timeStr}</span>`;
 
   banner.classList.remove('hidden');
-}
-
-// ── STEP ANIMATION ─────────────────────────────────────────────────
-function animateSteps() {
-  const ids = ['lstep-1','lstep-2','lstep-3'];
-  let i = 0;
-  resetSteps();
-  const el0 = document.getElementById(ids[0]);
-  if (el0) el0.classList.add('active');
-  function next() {
-    const cur = document.getElementById(ids[i]);
-    if (!cur || i >= ids.length - 1) return;
-    cur.classList.replace('active','done');
-    i++;
-    const nxt = document.getElementById(ids[i]);
-    if (nxt) nxt.classList.add('active');
-    stepTimer = setTimeout(next, 5000);
-  }
-  stepTimer = setTimeout(next, 4500);
-}
-function resetSteps() {
-  ['lstep-1','lstep-2','lstep-3'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.remove('active','done');
-  });
 }
 
 // ── RENDER ALL ─────────────────────────────────────────────────────
