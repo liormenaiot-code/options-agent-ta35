@@ -24,7 +24,7 @@ from analyzer import analyze_market_sync
 from scraper import (
     scrape_all, get_expiry_dates,
     _fetch_tase_putvscall, _fetch_tradeboost_expiry_dates, TASE_PUTVSCALL_SOURCE_URL,
-    _fetch_ta35_stock_prices,
+    _fetch_ta35_stock_prices, _scrape_globes_arbitrage,
 )
 
 # ── IN-MEMORY CACHE ──────────────────────────────────────────────────
@@ -221,6 +221,39 @@ async def get_stocks(force: bool = Query(default=False)):
             "from_cache": False,
         }
         _stocks_cache = {"data": payload, "ts": time.time()}
+        return JSONResponse(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── GLOBES ARBITRAGE DATA ────────────────────────────────────────────
+_arb_cache: dict = {"data": None, "ts": 0.0}
+ARB_CACHE_TTL = 180  # 3 minutes
+
+
+@app.get("/api/arbitrage")
+async def get_arbitrage(force: bool = Query(default=False)):
+    """
+    Returns Globes arbitrage data: theoretical impact on TA-35 + per-stock gaps.
+    Data source: globes.co.il/portal/arbitrage — no manipulation, exact values.
+    """
+    global _arb_cache
+
+    if not force:
+        entry = _arb_cache
+        if entry["data"] and time.time() - entry["ts"] < ARB_CACHE_TTL:
+            return JSONResponse({**entry["data"], "from_cache": True})
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            data = await _scrape_globes_arbitrage(client)
+
+        payload = {
+            **data,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "from_cache": False,
+        }
+        _arb_cache = {"data": payload, "ts": time.time()}
         return JSONResponse(payload)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

@@ -137,6 +137,161 @@ async def _finnhub_news(client):
         return {"source": "Finnhub", "articles": [], "error": str(exc)}
 
 
+# ── GLOBES ARBITRAGE SCRAPER ─────────────────────────────────────────
+
+_GLOBES_ARB_URL = "https://www.globes.co.il/portal/arbitrage/"
+
+async def _scrape_globes_arbitrage(client) -> dict:
+    """
+    Scrapes Globes arbitrage page for theoretical arbitrage impact on TA-35.
+    Returns exact data as published on globes.co.il — no manipulation.
+    """
+    import re as _re
+    result = {
+        "summary": {
+            "current_impact_pct":  None,   # השפעה תיאורטית עדכנית
+            "initial_impact_pct":  None,   # השפעה תיאורטית התחלתית
+            "ta35_actual_pct":     None,   # שינוי בפועל ת"א 35
+            "usd_ils_rate":        None,   # שער דולר/שקל
+            "as_of":               None,   # מעודכן לשעה
+        },
+        "stocks":     [],
+        "source_url": _GLOBES_ARB_URL,
+        "error":      None,
+    }
+
+    try:
+        hdrs = {
+            **HEADERS,
+            "Referer":         "https://www.globes.co.il/",
+            "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8",
+        }
+        resp = await client.get(_GLOBES_ARB_URL, headers=hdrs,
+                                follow_redirects=True, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # ── helpers ──────────────────────────────────────────────────
+        def _pct(s: str) -> float | None:
+            try:
+                return round(float(str(s).replace('%', '').replace(',', '').strip()), 3)
+            except Exception:
+                return None
+
+        def _price(s: str) -> float | None:
+            try:
+                return float(str(s).replace(',', '').strip())
+            except Exception:
+                return None
+
+        # ── summary block ─────────────────────────────────────────────
+        full_text = soup.get_text(separator="\n")
+        lines     = [l.strip() for l in full_text.split("\n") if l.strip()]
+
+        pct_pat = _re.compile(r'^[-+]?\d+\.?\d*%$')
+
+        def _next_pct_after(keyword: str) -> float | None:
+            for idx, ln in enumerate(lines):
+                if keyword in ln:
+                    for j in range(idx, min(idx + 6, len(lines))):
+                        if pct_pat.match(lines[j]):
+                            return _pct(lines[j])
+            return None
+
+        result["summary"]["current_impact_pct"] = _next_pct_after("עדכנית")
+        result["summary"]["initial_impact_pct"] = _next_pct_after("התחלתית")
+        result["summary"]["ta35_actual_pct"]     = _next_pct_after('מדד ת"א 35')
+
+        m_rate = _re.search(r'1\$\s*=\s*([\d.]+)', full_text)
+        if m_rate:
+            result["summary"]["usd_ils_rate"] = float(m_rate.group(1))
+
+        m_time = _re.search(r'מעודכן[^\d]*([\d]{2}/[\d]{2}/[\d]{4}\s+שעה\s+[\d]{2}:[\d]{2})', full_text)
+        if m_time:
+            result["summary"]["as_of"] = m_time.group(1)
+
+        # ── stock table ───────────────────────────────────────────────
+        # Find table containing arb data (has US tickers like TEVA, ESLT)
+        target = None
+        for t in soup.find_all("table"):
+            t_txt = t.get_text()
+            if sum(1 for tk in ["TEVA", "ESLT", "NICE", "PANW", "EVGN"] if tk in t_txt) >= 2:
+                target = t
+                break
+
+        # Page structure (confirmed from live data):
+        # Hebrew row: [name_he, '', arb_current%, arb_initial%, ta_change%, '', tase_price, tase_time, ratio, ...]
+        # US row:     ['', us_ticker, '', '', us_change%, us_price_usd, us_price_ils, us_time, ratio, ...]
+
+        def _safe_get(lst, idx, default=""):
+            return lst[idx] if idx < len(lst) else default
+
+        stocks = []
+        if target:
+            rows = target.find_all("tr")
+            i    = 1  # skip header row
+            while i < len(rows):
+                tds  = rows[i].find_all(["td", "th"])
+                vals = [td.get_text(separator=" ", strip=True) for td in tds]
+                if len(vals) < 4:
+                    i += 1
+                    continue
+
+                first = vals[0].strip()
+                # Hebrew name row: first char is not ASCII (Hebrew)
+                if not first or first[0].isascii():
+                    i += 1
+                    continue
+
+                stock = {
+                    "name_he":         first,
+                    "us_ticker":       None,
+                    "arb_pct_current": _pct(_safe_get(vals, 2)),
+                    "arb_pct_initial": _pct(_safe_get(vals, 3)),
+                    "ta_change_pct":   _pct(_safe_get(vals, 4)),
+                    "tase_price":      _price(_safe_get(vals, 6)),
+                    "tase_time":       _safe_get(vals, 7) or None,
+                    "us_change_pct":   None,
+                    "us_price_ils":    None,
+                    "us_time":         None,
+                    "ratio":           1,
+                }
+
+                # Ratio — vals[8] if it's a small integer
+                ratio_raw = _safe_get(vals, 8).strip()
+                if ratio_raw.isdigit():
+                    stock["ratio"] = int(ratio_raw)
+
+                # Next row should be the US counterpart row
+                if i + 1 < len(rows):
+                    us_tds  = rows[i + 1].find_all(["td", "th"])
+                    us_vals = [td.get_text(separator=" ", strip=True) for td in us_tds]
+                    # US row: first cell is empty, second cell is the ticker
+                    us_ticker_raw = _safe_get(us_vals, 1).strip()
+                    if us_ticker_raw and us_ticker_raw.replace("-", "").replace(".", "").isupper() \
+                            and len(us_ticker_raw) <= 8:
+                        stock["us_ticker"]    = us_ticker_raw
+                        stock["us_change_pct"] = _pct(_safe_get(us_vals, 4))
+                        stock["us_price_ils"]  = _price(_safe_get(us_vals, 6))
+                        stock["us_time"]       = _safe_get(us_vals, 7) or None
+                        i += 2  # consumed both rows
+                    else:
+                        i += 1
+                else:
+                    i += 1
+
+                if first and len(first) > 1:
+                    stocks.append(stock)
+
+        result["stocks"] = stocks
+
+    except Exception as exc:
+        result["error"] = str(exc)
+
+    return result
+
+
 # ── HEBREW NEWS SCRAPERS ──────────────────────────────────────────────
 
 _JUNK_HEADLINES = {

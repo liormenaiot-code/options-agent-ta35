@@ -9,6 +9,7 @@ let hasAnalysis      = false;
 
 let _activeStocksTab = 'all';
 let _stocksData      = null;
+let _arbData         = null;
 
 const FETCH_TIMEOUT_MS = 200_000; // 3:20 min hard cap
 
@@ -76,6 +77,7 @@ async function refreshData(force = false) {
     renderAll(data);
     loadPutCall(pcSelectedExpiry, force);
     loadStocks(force);
+    loadArbitrage(force);
   } catch (err) {
     if (err.name === 'AbortError') showError('הניתוח לקח יותר מדי זמן — נסה שוב');
     else showError(err.message);
@@ -658,17 +660,13 @@ async function refreshPutCall() {
   }
 }
 
-// ── TA-35 STOCKS ────────────────────────────────────────────────────
+// ── TA-35 STOCKS — TradingView watchlist ────────────────────────────
 
 async function loadStocks(force = false) {
   const body = document.getElementById('stocks-body');
   if (!body) return;
 
-  // Use cached data if available and not forcing refresh
-  if (!force && _stocksData) {
-    renderStocks(_stocksData);
-    return;
-  }
+  if (!force && _stocksData) { renderStocks(_stocksData); return; }
 
   body.innerHTML = '<div class="stocks-loading">⏳ טוען מחירי מניות...</div>';
 
@@ -681,14 +679,13 @@ async function loadStocks(force = false) {
     _stocksData = data;
     renderStocks(data);
 
-    // Update timestamp
     const upd = document.getElementById('stocks-updated');
     if (upd && data.fetched_at) {
       const d = new Date(data.fetched_at);
-      upd.textContent = `עודכן: ${d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })}`;
+      upd.textContent = `עוד׳ ${d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })}`;
     }
   } catch (err) {
-    body.innerHTML = `<div class="pc-error">⚠ שגיאה בטעינת מניות: ${esc(err.message)}</div>`;
+    body.innerHTML = `<div class="stocks-loading">⚠ ${esc(err.message)}</div>`;
   }
 }
 
@@ -700,16 +697,26 @@ function switchStocksTab(tab) {
   if (_stocksData) renderStocks(_stocksData);
 }
 
+function _chgCls(pct) {
+  if (pct == null) return 'flat';
+  return pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat';
+}
+function _chgChip(pct, extraClass = '') {
+  if (pct == null) return `<span class="wl-chg-chip flat${extraClass}">—</span>`;
+  const cls  = _chgCls(pct);
+  const sign = pct > 0 ? '+' : '';
+  const arr  = cls === 'up' ? '▲' : cls === 'down' ? '▼' : '●';
+  return `<span class="wl-chg-chip ${cls}${extraClass}">${arr} ${sign}${pct.toFixed(2)}%</span>`;
+}
+
 function renderStocks(data) {
   const body = document.getElementById('stocks-body');
   if (!body || !data?.stocks) return;
 
-  let stocks = [...data.stocks];
-  if (_activeStocksTab === 'us') {
-    stocks = stocks.filter(s => s.dual_listed);
-  }
+  const isDual = _activeStocksTab === 'dual';
+  let stocks   = [...data.stocks];
+  if (isDual) stocks = stocks.filter(s => s.dual_listed);
 
-  // Sort by % change descending (biggest gainers first, losers last)
   stocks.sort((a, b) => (b.change_pct ?? -999) - (a.change_pct ?? -999));
 
   if (!stocks.length) {
@@ -717,40 +724,176 @@ function renderStocks(data) {
     return;
   }
 
-  const cards = stocks.map(s => {
-    const hasPrice  = s.price != null;
-    const changePct = s.change_pct;
-    const sign = (changePct != null && changePct > 0) ? '+' : '';
-    const cls  = changePct > 0.05 ? 'up' : changePct < -0.05 ? 'down' : 'flat';
+  const dualCol = isDual
+    ? `<th class="th-us">NYSE / NASDAQ</th>` : '';
 
-    const priceHtml = hasPrice
-      ? `<span class="sc-price">${fmtNum(s.price, 2)}</span>`
-      : `<span class="sc-price sc-no-data">—</span>`;
+  const rows = stocks.map((s, idx) => {
+    const cls     = _chgCls(s.change_pct);
+    const priceHtml = s.price != null
+      ? fmtNum(s.price, 2)
+      : '<span style="color:var(--text-dim)">—</span>';
 
-    const changeHtml = (hasPrice && changePct != null)
-      ? `<span class="sc-change ${cls}">${sign}${changePct.toFixed(2)}%</span>`
-      : `<span class="sc-change flat">—</span>`;
-
-    const usBadge = s.dual_listed
-      ? `<span class="sc-us-badge">${esc(s.us_exchange)}: ${esc(s.us_ticker)}</span>`
+    const dualCell = isDual
+      ? `<td class="wl-us">${s.dual_listed
+          ? `<span class="wl-us-badge">
+               <span class="wl-us-exch">${esc(s.us_exchange || '')}</span>
+               ${esc(s.us_ticker || '')}
+             </span>`
+          : ''}</td>`
       : '';
 
-    const cardCls = hasPrice ? ` ${cls}` : '';
-
-    return `
-      <div class="stock-card${cardCls}">
-        <div class="sc-top">
-          <span class="sc-ticker">${esc(s.tase_ticker)}</span>
-          ${usBadge}
-        </div>
-        <div class="sc-name">${esc(s.name_he)}</div>
-        <div class="sc-bottom">
-          ${priceHtml}
-          ${changeHtml}
-        </div>
-      </div>`;
+    return `<tr class="wl-row ${cls}">
+      <td class="wl-num">${idx + 1}</td>
+      <td class="wl-name">${esc(s.name_he)}</td>
+      <td class="wl-ticker">${esc(s.tase_ticker)}</td>
+      <td class="wl-price">${priceHtml}</td>
+      <td class="wl-change">${_chgChip(s.change_pct)}</td>
+      ${dualCell}
+    </tr>`;
   }).join('');
 
-  body.innerHTML = `<div class="stocks-grid">${cards}</div>`;
+  body.innerHTML = `<table class="wl-table">
+    <thead><tr>
+      <th class="th-num">#</th>
+      <th>שם מניה</th>
+      <th>טיקר</th>
+      <th class="th-price">מחיר ₪</th>
+      <th class="th-change">שינוי%</th>
+      ${dualCol}
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ── ARBITRAGE — Globes live data ─────────────────────────────────────
+
+async function loadArbitrage(force = false) {
+  const body = document.getElementById('arb-body');
+  if (!body) return;
+
+  if (!force && _arbData) { renderArbitrage(_arbData); return; }
+
+  body.innerHTML = '<div class="arb-loading">⏳ שולף נתוני ארביטראז' מגלובס...</div>';
+
+  try {
+    const params = new URLSearchParams();
+    if (force) params.set('force', 'true');
+    const resp = await fetch(`/api/arbitrage?${params.toString()}`);
+    if (!resp.ok) throw new Error(`שגיאת שרת: ${resp.status}`);
+    const data = await resp.json();
+    _arbData = data;
+    renderArbitrage(data);
+
+    const upd = document.getElementById('arb-updated');
+    if (upd && data.fetched_at) {
+      const d = new Date(data.fetched_at);
+      upd.textContent = `עוד׳ ${d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })}`;
+    }
+  } catch (err) {
+    body.innerHTML = `<div class="arb-loading">⚠ ${esc(err.message)}</div>`;
+  }
+}
+
+function _arbChip(pct) {
+  if (pct == null) return '<span class="arb-pct-chip flat">—</span>';
+  const cls  = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat';
+  const sign = pct > 0 ? '+' : '';
+  const arr  = cls === 'up' ? '▲' : cls === 'down' ? '▼' : '●';
+  return `<span class="arb-pct-chip ${cls}">${arr} ${sign}${pct.toFixed(2)}%</span>`;
+}
+
+function _arbSumVal(pct) {
+  if (pct == null) return { txt: '—', cls: 'flat' };
+  const cls  = pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat';
+  const sign = pct > 0 ? '+' : '';
+  return { txt: `${sign}${pct.toFixed(2)}%`, cls };
+}
+
+function renderArbitrage(data) {
+  const body = document.getElementById('arb-body');
+  if (!body) return;
+
+  const sum    = data.summary || {};
+  const stocks = (data.stocks || []);
+
+  if (!stocks.length && !sum.current_impact_pct) {
+    body.innerHTML = `<div class="arb-loading">
+      אין נתוני ארביטראז' זמינים${data.error ? ` — ${esc(data.error)}` : ''}</div>`;
+    return;
+  }
+
+  // Summary bar
+  const cur  = _arbSumVal(sum.current_impact_pct);
+  const ini  = _arbSumVal(sum.initial_impact_pct);
+  const ta35 = _arbSumVal(sum.ta35_actual_pct);
+  const rate = sum.usd_ils_rate
+    ? `<span class="arb-rate">1$ = ${sum.usd_ils_rate.toFixed(4)} ₪</span>` : '';
+
+  const summaryHtml = `<div class="arb-summary">
+    <div class="arb-sum-item">
+      <span class="arb-sum-label">השפעה עדכנית</span>
+      <span class="arb-sum-val ${cur.cls}">${cur.txt}</span>
+    </div>
+    <div class="arb-sum-sep"></div>
+    <div class="arb-sum-item">
+      <span class="arb-sum-label">השפעה התחלתית</span>
+      <span class="arb-sum-val ${ini.cls}">${ini.txt}</span>
+    </div>
+    <div class="arb-sum-sep"></div>
+    <div class="arb-sum-item">
+      <span class="arb-sum-label">שינוי ת"א 35 בפועל</span>
+      <span class="arb-sum-val ${ta35.cls}">${ta35.txt}</span>
+    </div>
+    ${rate}
+  </div>`;
+
+  // Stock table — sort by absolute arb gap (largest first)
+  const sorted = [...stocks].sort((a, b) =>
+    Math.abs(b.arb_pct_current ?? 0) - Math.abs(a.arb_pct_current ?? 0)
+  );
+
+  const rows = sorted.map((s, idx) => {
+    const tasePrice = s.tase_price != null
+      ? fmtNum(s.tase_price, s.tase_price >= 10000 ? 0 : 2)
+      : '—';
+    const usPrice = s.us_price_ils != null
+      ? fmtNum(s.us_price_ils, s.us_price_ils >= 10000 ? 0 : 2)
+      : '—';
+
+    const taChg = s.ta_change_pct != null ? (() => {
+      const cls  = _chgCls(s.ta_change_pct);
+      const sign = s.ta_change_pct > 0 ? '+' : '';
+      return `<span class="arb-ta-chg ${cls}">${sign}${s.ta_change_pct.toFixed(2)}%</span>`;
+    })() : '<span class="arb-ta-chg flat">—</span>';
+
+    return `<tr class="arb-row">
+      <td class="arb-num">${idx + 1}</td>
+      <td class="arb-name">${esc(s.name_he || '')}</td>
+      <td class="arb-ticker">${esc(s.us_ticker || '')}</td>
+      <td class="arb-price">${tasePrice}</td>
+      <td class="arb-price">${usPrice}</td>
+      <td class="arb-pct">${_arbChip(s.arb_pct_current)}</td>
+      <td class="arb-pct">${_arbChip(s.arb_pct_initial)}</td>
+      <td class="arb-pct">${taChg}</td>
+    </tr>`;
+  }).join('');
+
+  const tableHtml = stocks.length ? `<div class="arb-table-wrap">
+    <table class="arb-table">
+      <thead><tr>
+        <th class="arb-th-num">#</th>
+        <th>שם מניה</th>
+        <th>US</th>
+        <th class="arb-th-price">TASE ₪</th>
+        <th class="arb-th-price">US (₪)</th>
+        <th class="arb-th-pct">פער עדכני</th>
+        <th class="arb-th-pct">פער התחלתי</th>
+        <th class="arb-th-pct">שינוי ת"א</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>` : '';
+
+  body.innerHTML = summaryHtml + tableHtml;
 }
 

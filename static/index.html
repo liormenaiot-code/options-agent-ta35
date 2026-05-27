@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=27" />
+  <link rel="stylesheet" href="/static/style.css?v=28" />
 </head>
 <body>
 
@@ -99,18 +99,30 @@
       <div id="stats-body" class="stats-body"></div>
     </section>
 
-    <!-- TA-35 STOCKS -->
+    <!-- TA-35 STOCKS — TradingView watchlist style -->
     <section class="stocks-section" id="stocks-section">
       <div class="stocks-header">
         <span class="stocks-title">מניות ת"א&nbsp;35</span>
         <div class="stocks-tabs">
-          <button class="stocks-tab active" id="tab-all" onclick="switchStocksTab('all')">כל המניות</button>
-          <button class="stocks-tab" id="tab-us" onclick="switchStocksTab('us')">🇺🇸 נסחרות גם בארה"ב</button>
+          <button class="stocks-tab active" id="tab-all"   onclick="switchStocksTab('all')">כל המניות</button>
+          <button class="stocks-tab"        id="tab-dual"  onclick="switchStocksTab('dual')">🇺🇸 דואליות</button>
         </div>
         <span id="stocks-updated" class="stocks-updated"></span>
       </div>
       <div id="stocks-body" class="stocks-body">
         <div class="stocks-loading">⏳ טוען מחירי מניות...</div>
+      </div>
+    </section>
+
+    <!-- ARBITRAGE — Globes live data -->
+    <section class="arb-section" id="arb-section">
+      <div class="arb-header">
+        <span class="arb-title">ארביטראז' ת"א ← ניו יורק</span>
+        <span class="arb-src">מקור: <a href="https://www.globes.co.il/portal/arbitrage/" target="_blank" rel="noopener" class="arb-src-link">גלובס</a></span>
+        <span id="arb-updated" class="arb-updated"></span>
+      </div>
+      <div id="arb-body" class="arb-body">
+        <div class="arb-loading">טוען נתוני ארביטראז'...</div>
       </div>
     </section>
 
@@ -153,6 +165,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
   <script src="/static/bg-shader.js"></script>
-  <script src="/static/app.js?v=27"></script>
+  <script src="/static/app.js?v=28"></script>
 </body>
 </html>
