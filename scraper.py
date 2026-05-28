@@ -954,7 +954,7 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict
             except Exception:
                 pass
 
-            # ── Scroll table to trigger lazy-load ─────────────────────
+            # ── Scroll table to trigger lazy-load (combined view) ─────
             prev = 0
             for _ in range(30):
                 await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
@@ -966,44 +966,82 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict
                     break
                 prev = cnt
 
-            # ── Use captured XHR data if available ───────────────────
-            if captured:
-                items = _parse_investing_api(captured)
-            else:
-                # DOM fallback
-                dom = await page.evaluate("""
-                    () => {
-                        const rows = [];
-                        let tbl = null;
-                        // Search for the options table — look for Hebrew keywords or common option table markers
+            # ── JS extractor (reused for both DOM passes) ─────────────
+            _JS_EXTRACT = """
+                () => {
+                    const rows = [];
+                    let tbl = null;
+                    for (const t of document.querySelectorAll('table')) {
+                        const txt = t.innerText || '';
+                        if (txt.includes('מחיר מימוש') || txt.includes('Strike') ||
+                            txt.includes('מימוש') || txt.includes('נפח') ||
+                            txt.includes('ביקוש')) {
+                            tbl = t; break;
+                        }
+                    }
+                    if (!tbl) {
                         for (const t of document.querySelectorAll('table')) {
-                            const txt = t.innerText || '';
-                            if (txt.includes('מחיר מימוש') || txt.includes('Strike') ||
-                                txt.includes('מימוש') || txt.includes('OI') ||
-                                txt.includes('נפח') || txt.includes('ביקוש')) {
+                            if (t.querySelectorAll('tbody tr').length >= 3) {
                                 tbl = t; break;
                             }
                         }
-                        // Fallback: first table with enough rows
-                        if (!tbl) {
-                            for (const t of document.querySelectorAll('table')) {
-                                if (t.querySelectorAll('tbody tr').length >= 3) {
-                                    tbl = t; break;
-                                }
-                            }
-                        }
-                        if (!tbl) return {headers:[], rows:[]};
-                        const headers = Array.from(tbl.querySelectorAll('thead th,thead td'))
-                                            .map(h => h.innerText.trim());
-                        for (const row of tbl.querySelectorAll('tbody tr')) {
-                            const cells = Array.from(row.querySelectorAll('td'))
-                                              .map(td => td.innerText.trim());
-                            if (cells.length >= 5) rows.push(cells);
-                        }
-                        return {headers, rows};
                     }
-                """)
-                items = _parse_investing_dom(dom.get("rows", []))
+                    if (!tbl) return {headers:[], rows:[]};
+                    const headers = Array.from(tbl.querySelectorAll('thead th,thead td'))
+                                        .map(h => h.innerText.trim());
+                    for (const row of tbl.querySelectorAll('tbody tr')) {
+                        const cells = Array.from(row.querySelectorAll('td'))
+                                          .map(td => td.innerText.trim());
+                        if (cells.length >= 5) rows.push(cells);
+                    }
+                    return {headers, rows};
+                }
+            """
+
+            # ── Pass 1: Combined view → call_last, call_vol, put_last ─
+            # Combined view = 8 cols: [Call_Last,Chg,Bid,Ask,Call_Vol, Strike, Put_Last,Put_Chg]
+            # put_vol is NOT in combined view, so items will have put_vol=0 after pass 1.
+            if captured:
+                items = _parse_investing_api(captured)
+            else:
+                dom1 = await page.evaluate(_JS_EXTRACT)
+                items = _parse_investing_dom(dom1.get("rows", []))
+
+            # ── Pass 2: Puts view → put_vol only ──────────────────────
+            # Puts view = 11 cols: symmetric layout with Put_Vol at right[-1].
+            # We DON'T use this pass for prices — only to fill put_vol gaps.
+            # Skip if we already got data via XHR (API data includes put_vol directly).
+            if not captured:
+                try:
+                    show_opts = await page.evaluate("""
+                        () => {
+                            const s = document.getElementById('selectShow');
+                            if (!s) return [];
+                            return Array.from(s.options).map(o=>({v:o.value,t:o.text.trim()}));
+                        }
+                    """)
+                    puts_val = next(
+                        (o["v"] for o in show_opts if o["v"] == "Puts"
+                         or ("פוט" in o.get("t", "") and "קול" not in o.get("t", ""))),
+                        None
+                    )
+                    if puts_val is not None:
+                        await page.select_option("#selectShow", value=str(puts_val))
+                        await page.wait_for_timeout(2_500)
+                        # Light scroll to load any lazy rows
+                        for _ in range(6):
+                            await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                            await page.wait_for_timeout(300)
+                        dom2 = await page.evaluate(_JS_EXTRACT)
+                        items_puts = _parse_investing_dom(dom2.get("rows", []))
+                        # Merge: copy put_vol from pass-2 into pass-1 items (by strike)
+                        puts_vol_map = {it["strike"]: it.get("put_vol", 0) for it in items_puts}
+                        for item in items:
+                            pv = puts_vol_map.get(item["strike"], 0)
+                            if pv:
+                                item["put_vol"] = pv
+                except Exception:
+                    pass
 
         finally:
             await browser.close()
@@ -1058,13 +1096,15 @@ def _parse_investing_dom(rows: list) -> list[dict]:
     """
     Parses DOM rows from investing.com ta25-options table.
 
-    Verified layout (8 columns, debug confirmed 28-May-2026):
-      index:  0           1       2       3       4      5              6          7
-              Call_Last  Call_Chg Call_Bid Call_Ask Call_Vol  Strike   Put_Last  Put_Chg
+    We always scrape with selectShow='Puts' (11-column symmetric layout):
+      index:  0           1         2         3         4         5       6         7         8         9         10
+              Call_Last  Call_Chg  Call_Bid  Call_Ask  Call_Vol  Strike  Put_Last  Put_Chg  Put_Bid  Put_Ask  Put_Vol
 
-    Example first row: ['1,440', '1,79', '1,380', '1,500', '74', '4,460', '170', '5']
+    left  = cells[:strike_idx]   → 5 cols: [Call_Last, Call_Chg, Call_Bid, Call_Ask, Call_Vol]
+    right = cells[strike_idx+1:] → 5 cols: [Put_Last,  Put_Chg,  Put_Bid,  Put_Ask,  Put_Vol]
 
-    Note: investing.com ta25 table has NO open-interest (OI) column — only Last, Chg, Bid, Ask, Vol.
+    Falls back gracefully to 8-column combined view if 'Puts' select fails.
+    Note: investing.com ta25 table has NO open-interest (OI) column.
     """
     import re as _re
 
@@ -1114,7 +1154,10 @@ def _parse_investing_dom(rows: list) -> list[dict]:
         call_last = _pf(left[0]) if len(left) >= 1 else None
         call_vol  = _pi(left[4]) if len(left) >= 5 else (_pi(left[-1]) if left else 0)
         put_last  = _pf(right[0]) if len(right) >= 1 else None
-        put_vol   = 0  # not available in this table layout
+        # In the 11-column Puts view: right = [Put_Last, Put_Chg, Put_Bid, Put_Ask, Put_Vol]
+        # Put_Vol is always the last element (right[-1]) when len(right) >= 5.
+        # In the 8-column combined view: right = [Put_Last, Put_Chg] → len(right) < 5 → 0.
+        put_vol   = _pi(right[-1]) if len(right) >= 5 else 0
 
         items.append({
             "strike":        strike,
