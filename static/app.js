@@ -755,50 +755,65 @@ function renderStocks(data) {
   let stocks   = [...data.stocks];
   if (isDual) stocks = stocks.filter(s => s.dual_listed);
 
-  stocks.sort((a, b) => (b.change_pct ?? -999) - (a.change_pct ?? -999));
+  // Dual tab: sort by US change%, all-tab: sort by TASE change%
+  if (isDual) {
+    stocks.sort((a, b) => (b.us_change_pct ?? -999) - (a.us_change_pct ?? -999));
+  } else {
+    stocks.sort((a, b) => (b.change_pct ?? -999) - (a.change_pct ?? -999));
+  }
 
   if (!stocks.length) {
     body.innerHTML = '<div class="stocks-loading">לא נמצאו מניות</div>';
     return;
   }
 
-  const dualCols = isDual
-    ? `<th class="th-us-ticker">US טיקר</th>
-       <th class="th-us-price">מחיר $</th>
-       <th class="th-us-chg">שינוי US%</th>` : '';
+  // ── DUAL TAB — US-only view ──────────────────────────────────────
+  if (isDual) {
+    const rows = stocks.map((s, idx) => {
+      const usCls      = _chgCls(s.us_change_pct);
+      const stateMap   = { LIVE: 'us-live', PRE: 'us-pre', AH: 'us-ah', '---': 'us-cls' };
+      const stateCls   = stateMap[s.us_market_state] || 'us-cls';
+      const stateLbl   = s.us_market_state || '---';
 
+      const usPriceHtml = s.us_price_usd != null
+        ? `$${fmtNum(s.us_price_usd, 2)}`
+        : '<span style="color:var(--text-dim)">—</span>';
+
+      return `<tr class="wl-row ${usCls}">
+        <td class="wl-num">${idx + 1}</td>
+        <td class="wl-name">${esc(s.name_he)}</td>
+        <td class="wl-ticker wl-us-badge-cell">
+          <span class="wl-us-badge">
+            <span class="wl-us-exch">${esc(s.us_exchange || '')}</span>
+            ${esc(s.us_ticker || '')}
+          </span>
+        </td>
+        <td class="wl-us-price">${usPriceHtml}</td>
+        <td class="wl-us-chg">${_chgChip(s.us_change_pct)}</td>
+        <td class="wl-us-state"><span class="us-state-badge ${stateCls}">${stateLbl}</span></td>
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `<table class="wl-table">
+      <thead><tr>
+        <th class="th-num">#</th>
+        <th>שם מניה</th>
+        <th class="th-us-ticker">טיקר US</th>
+        <th class="th-us-price">מחיר $</th>
+        <th class="th-change">שינוי%</th>
+        <th style="width:60px">שוק</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+    return;
+  }
+
+  // ── ALL-STOCKS TAB — TASE view ───────────────────────────────────
   const rows = stocks.map((s, idx) => {
-    const cls      = _chgCls(s.change_pct);
+    const cls       = _chgCls(s.change_pct);
     const priceHtml = s.price != null
       ? fmtNum(s.price, 2)
       : '<span style="color:var(--text-dim)">—</span>';
-
-    let dualCells = '';
-    if (isDual) {
-      if (s.dual_listed) {
-        // Market state badge colour
-        const stateMap = { LIVE: 'us-live', PRE: 'us-pre', AH: 'us-ah', '---': 'us-cls' };
-        const stateCls = stateMap[s.us_market_state] || 'us-cls';
-        const stateLbl = s.us_market_state || '---';
-
-        const usPriceHtml = s.us_price_usd != null
-          ? `$${fmtNum(s.us_price_usd, 2)}`
-          : '<span style="color:var(--text-dim)">—</span>';
-
-        dualCells = `
-          <td class="wl-us-ticker">
-            <span class="wl-us-badge">
-              <span class="wl-us-exch">${esc(s.us_exchange || '')}</span>
-              ${esc(s.us_ticker || '')}
-            </span>
-            <span class="us-state-badge ${stateCls}">${stateLbl}</span>
-          </td>
-          <td class="wl-us-price">${usPriceHtml}</td>
-          <td class="wl-us-chg">${_chgChip(s.us_change_pct, ' sm')}</td>`;
-      } else {
-        dualCells = `<td class="wl-us-ticker"></td><td class="wl-us-price"></td><td class="wl-us-chg"></td>`;
-      }
-    }
 
     return `<tr class="wl-row ${cls}">
       <td class="wl-num">${idx + 1}</td>
@@ -806,7 +821,6 @@ function renderStocks(data) {
       <td class="wl-ticker">${esc(s.tase_ticker)}</td>
       <td class="wl-price">${priceHtml}</td>
       <td class="wl-change">${_chgChip(s.change_pct)}</td>
-      ${dualCells}
     </tr>`;
   }).join('');
 
@@ -816,8 +830,7 @@ function renderStocks(data) {
       <th>שם מניה</th>
       <th>טיקר</th>
       <th class="th-price">מחיר ₪</th>
-      <th class="th-change">ת"א שינוי%</th>
-      ${dualCols}
+      <th class="th-change">שינוי%</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
