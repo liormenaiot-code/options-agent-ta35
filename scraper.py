@@ -1106,7 +1106,7 @@ TA35_STOCKS: list[tuple] = [
     ("עזריאלי קבוצה",     "AZRG.TA",   None,    None),
     ("ביג",               "BIG.TA",    None,    None),
     ("מגה אור",           "MGOR.TA",   None,    None),   # MGAO on investing.com
-    ("אנלייט אנרגיה",     "ENLT.TA",   None,    None),
+    ("אנלייט אנרגיה",     "ENLT.TA",   "ENLT",  "NASDAQ"),
     ("קנון הולדינגס",     "KEN.TA",    None,    None),   # KNON on investing.com
     ("שפיר הנדסה",        "SPEN.TA",   None,    None),   # SPIR on investing.com
     ("אורמת טכנולוגיות",  "ORA.TA",    "ORA",   "NYSE"),

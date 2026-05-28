@@ -779,9 +779,18 @@ function renderStocks(data) {
   // ── US dual column ────────────────────────────────────────────────
   const bodyDual = document.getElementById('stocks-body-dual');
   if (bodyDual) {
+    // Fixed display order as requested
+    const DUAL_ORDER = ['TSEM','TEVA','NVMI','ESLT','ENLT','ORA','NICE','CAMT','ICL'];
     const dualStocks = [...data.stocks]
       .filter(s => s.dual_listed)
-      .sort((a, b) => (b.us_change_pct ?? -999) - (a.us_change_pct ?? -999));
+      .sort((a, b) => {
+        const ai = DUAL_ORDER.indexOf(a.us_ticker);
+        const bi = DUAL_ORDER.indexOf(b.us_ticker);
+        if (ai === -1 && bi === -1) return 0;
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      });
     if (!dualStocks.length) {
       bodyDual.innerHTML = '<div class="stocks-loading">לא נמצאו מניות דואליות</div>';
     } else {
