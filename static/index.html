@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=34" />
+  <link rel="stylesheet" href="/static/style.css?v=35" />
 </head>
 <body>
 
@@ -281,18 +281,34 @@
       <div id="stats-body" class="stats-body"></div>
     </section>
 
-    <!-- TA-35 STOCKS — TradingView watchlist style -->
+    <!-- TA-35 STOCKS — side-by-side view -->
     <section class="stocks-section" id="stocks-section">
       <div class="stocks-header">
         <span class="stocks-title">מניות ת"א&nbsp;35</span>
-        <div class="stocks-tabs">
-          <button class="stocks-tab active" id="tab-all"   onclick="switchStocksTab('all')">כל המניות</button>
-          <button class="stocks-tab"        id="tab-dual"  onclick="switchStocksTab('dual')">🇺🇸 דואליות</button>
-        </div>
         <span id="stocks-updated" class="stocks-updated"></span>
       </div>
-      <div id="stocks-body" class="stocks-body">
-        <div class="stocks-loading">⏳ טוען מחירי מניות...</div>
+      <div class="stocks-two-col">
+
+        <!-- TASE column -->
+        <div class="stocks-col">
+          <div class="stocks-col-hdr">
+            <span class="stocks-col-title">🇮🇱 שוק ישראלי — ת"א 35</span>
+          </div>
+          <div id="stocks-body-all" class="stocks-body">
+            <div class="stocks-loading">⏳ טוען מחירי מניות...</div>
+          </div>
+        </div>
+
+        <!-- US dual-listed column -->
+        <div class="stocks-col stocks-col-us">
+          <div class="stocks-col-hdr">
+            <span class="stocks-col-title">🇺🇸 דואליות — שוק ארה"ב</span>
+          </div>
+          <div id="stocks-body-dual" class="stocks-body">
+            <div class="stocks-loading">⏳ טוען...</div>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -346,6 +362,6 @@
   </main>
 
   <script src="/static/bg-shader.js"></script>
-  <script src="/static/app.js?v=34"></script>
+  <script src="/static/app.js?v=35"></script>
 </body>
 </html>

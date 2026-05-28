@@ -6,7 +6,6 @@ let selectedExpiry   = null;
 let pcSelectedExpiry = null;  // expiry chosen in Put/Call dropdown; only used on "נתח" click
 let hasAnalysis      = false;
 
-let _activeStocksTab = 'all';
 let _stocksData      = null;
 let _arbData         = null;
 
@@ -700,12 +699,14 @@ async function refreshPutCall() {
 // ── TA-35 STOCKS — TradingView watchlist ────────────────────────────
 
 async function loadStocks(force = false) {
-  const body = document.getElementById('stocks-body');
-  if (!body) return;
+  const bodyAll  = document.getElementById('stocks-body-all');
+  const bodyDual = document.getElementById('stocks-body-dual');
+  if (!bodyAll && !bodyDual) return;
 
   if (!force && _stocksData) { renderStocks(_stocksData); return; }
 
-  body.innerHTML = '<div class="stocks-loading">⏳ טוען מחירי מניות...</div>';
+  if (bodyAll)  bodyAll.innerHTML  = '<div class="stocks-loading">⏳ טוען מחירי מניות...</div>';
+  if (bodyDual) bodyDual.innerHTML = '<div class="stocks-loading">⏳ טוען...</div>';
 
   try {
     const params = new URLSearchParams();
@@ -727,14 +728,6 @@ async function loadStocks(force = false) {
   }
 }
 
-function switchStocksTab(tab) {
-  _activeStocksTab = tab;
-  document.querySelectorAll('.stocks-tab').forEach(b => b.classList.remove('active'));
-  const activeBtn = document.getElementById(`tab-${tab}`);
-  if (activeBtn) activeBtn.classList.add('active');
-  if (_stocksData) renderStocks(_stocksData);
-}
-
 function _chgCls(pct) {
   if (pct == null) return 'flat';
   return pct > 0.05 ? 'up' : pct < -0.05 ? 'down' : 'flat';
@@ -748,92 +741,85 @@ function _chgChip(pct, extraClass = '') {
 }
 
 function renderStocks(data) {
-  const body = document.getElementById('stocks-body');
-  if (!body || !data?.stocks) return;
+  if (!data?.stocks) return;
 
-  const isDual = _activeStocksTab === 'dual';
-  let stocks   = [...data.stocks];
-  if (isDual) stocks = stocks.filter(s => s.dual_listed);
-
-  // Dual tab: sort by US change%, all-tab: sort by TASE change%
-  if (isDual) {
-    stocks.sort((a, b) => (b.us_change_pct ?? -999) - (a.us_change_pct ?? -999));
-  } else {
-    stocks.sort((a, b) => (b.change_pct ?? -999) - (a.change_pct ?? -999));
+  // ── TASE column ───────────────────────────────────────────────────
+  const bodyAll = document.getElementById('stocks-body-all');
+  if (bodyAll) {
+    const allStocks = [...data.stocks].sort((a, b) => (b.change_pct ?? -999) - (a.change_pct ?? -999));
+    if (!allStocks.length) {
+      bodyAll.innerHTML = '<div class="stocks-loading">לא נמצאו מניות</div>';
+    } else {
+      const rows = allStocks.map((s, idx) => {
+        const cls       = _chgCls(s.change_pct);
+        const priceHtml = s.price != null
+          ? fmtNum(s.price, 2)
+          : '<span style="color:var(--text-dim)">—</span>';
+        return `<tr class="wl-row ${cls}">
+          <td class="wl-num">${idx + 1}</td>
+          <td class="wl-name">${esc(s.name_he)}</td>
+          <td class="wl-ticker">${esc(s.tase_ticker)}</td>
+          <td class="wl-price">${priceHtml}</td>
+          <td class="wl-change">${_chgChip(s.change_pct)}</td>
+        </tr>`;
+      }).join('');
+      bodyAll.innerHTML = `<table class="wl-table">
+        <thead><tr>
+          <th class="th-num">#</th>
+          <th>שם מניה</th>
+          <th>טיקר</th>
+          <th class="th-price">מחיר ₪</th>
+          <th class="th-change">שינוי%</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
   }
 
-  if (!stocks.length) {
-    body.innerHTML = '<div class="stocks-loading">לא נמצאו מניות</div>';
-    return;
+  // ── US dual column ────────────────────────────────────────────────
+  const bodyDual = document.getElementById('stocks-body-dual');
+  if (bodyDual) {
+    const dualStocks = [...data.stocks]
+      .filter(s => s.dual_listed)
+      .sort((a, b) => (b.us_change_pct ?? -999) - (a.us_change_pct ?? -999));
+    if (!dualStocks.length) {
+      bodyDual.innerHTML = '<div class="stocks-loading">לא נמצאו מניות דואליות</div>';
+    } else {
+      const stateMap = { LIVE: 'us-live', PRE: 'us-pre', AH: 'us-ah', '---': 'us-cls' };
+      const rows = dualStocks.map((s, idx) => {
+        const usCls      = _chgCls(s.us_change_pct);
+        const stateCls   = stateMap[s.us_market_state] || 'us-cls';
+        const stateLbl   = s.us_market_state || '---';
+        const usPriceHtml = s.us_price_usd != null
+          ? `$${fmtNum(s.us_price_usd, 2)}`
+          : '<span style="color:var(--text-dim)">—</span>';
+        return `<tr class="wl-row ${usCls}">
+          <td class="wl-num">${idx + 1}</td>
+          <td class="wl-name">${esc(s.name_he)}</td>
+          <td class="wl-ticker wl-us-badge-cell">
+            <span class="wl-us-badge">
+              <span class="wl-us-exch">${esc(s.us_exchange || '')}</span>
+              ${esc(s.us_ticker || '')}
+            </span>
+          </td>
+          <td class="wl-us-price">${usPriceHtml}</td>
+          <td class="wl-us-chg">${_chgChip(s.us_change_pct)}</td>
+          <td class="wl-us-state"><span class="us-state-badge ${stateCls}">${stateLbl}</span></td>
+        </tr>`;
+      }).join('');
+      bodyDual.innerHTML = `<table class="wl-table">
+        <thead><tr>
+          <th class="th-num">#</th>
+          <th>שם מניה</th>
+          <th class="th-us-ticker">טיקר US</th>
+          <th class="th-us-price">מחיר $</th>
+          <th class="th-change">שינוי%</th>
+          <th style="width:52px">שוק</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
   }
-
-  // ── DUAL TAB — US-only view ──────────────────────────────────────
-  if (isDual) {
-    const rows = stocks.map((s, idx) => {
-      const usCls      = _chgCls(s.us_change_pct);
-      const stateMap   = { LIVE: 'us-live', PRE: 'us-pre', AH: 'us-ah', '---': 'us-cls' };
-      const stateCls   = stateMap[s.us_market_state] || 'us-cls';
-      const stateLbl   = s.us_market_state || '---';
-
-      const usPriceHtml = s.us_price_usd != null
-        ? `$${fmtNum(s.us_price_usd, 2)}`
-        : '<span style="color:var(--text-dim)">—</span>';
-
-      return `<tr class="wl-row ${usCls}">
-        <td class="wl-num">${idx + 1}</td>
-        <td class="wl-name">${esc(s.name_he)}</td>
-        <td class="wl-ticker wl-us-badge-cell">
-          <span class="wl-us-badge">
-            <span class="wl-us-exch">${esc(s.us_exchange || '')}</span>
-            ${esc(s.us_ticker || '')}
-          </span>
-        </td>
-        <td class="wl-us-price">${usPriceHtml}</td>
-        <td class="wl-us-chg">${_chgChip(s.us_change_pct)}</td>
-        <td class="wl-us-state"><span class="us-state-badge ${stateCls}">${stateLbl}</span></td>
-      </tr>`;
-    }).join('');
-
-    body.innerHTML = `<table class="wl-table">
-      <thead><tr>
-        <th class="th-num">#</th>
-        <th>שם מניה</th>
-        <th class="th-us-ticker">טיקר US</th>
-        <th class="th-us-price">מחיר $</th>
-        <th class="th-change">שינוי%</th>
-        <th style="width:60px">שוק</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-    return;
-  }
-
-  // ── ALL-STOCKS TAB — TASE view ───────────────────────────────────
-  const rows = stocks.map((s, idx) => {
-    const cls       = _chgCls(s.change_pct);
-    const priceHtml = s.price != null
-      ? fmtNum(s.price, 2)
-      : '<span style="color:var(--text-dim)">—</span>';
-
-    return `<tr class="wl-row ${cls}">
-      <td class="wl-num">${idx + 1}</td>
-      <td class="wl-name">${esc(s.name_he)}</td>
-      <td class="wl-ticker">${esc(s.tase_ticker)}</td>
-      <td class="wl-price">${priceHtml}</td>
-      <td class="wl-change">${_chgChip(s.change_pct)}</td>
-    </tr>`;
-  }).join('');
-
-  body.innerHTML = `<table class="wl-table">
-    <thead><tr>
-      <th class="th-num">#</th>
-      <th>שם מניה</th>
-      <th>טיקר</th>
-      <th class="th-price">מחיר ₪</th>
-      <th class="th-change">שינוי%</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
 }
 
 // ── ARBITRAGE — Globes live data ─────────────────────────────────────
