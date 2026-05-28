@@ -812,6 +812,57 @@ body::after {
 }
 
 /* ═══════════════════════════════════════════════
+   SECTION NAV
+   ═══════════════════════════════════════════════ */
+.section-nav {
+  position: sticky;
+  top: 64px;
+  z-index: 90;
+  display: flex;
+  flex-direction: row-reverse;   /* RTL: links flow right → left */
+  gap: 4px;
+  padding: 0 36px;
+  height: 44px;
+  align-items: center;
+  background: rgba(9, 9, 11, 0.80);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 0;
+  /* negative margin so it sits flush before main content */
+}
+
+.snav-link {
+  padding: 5px 16px;
+  border-radius: 20px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: inherit;
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.snav-link:hover {
+  color: var(--cream);
+  background: rgba(255,255,255,0.07);
+}
+
+.snav-link.active {
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+/* Scroll offset so sticky headers don't cover the section */
+#home-section, #pc-section, #stats-section,
+#stocks-section, #news-section {
+  scroll-margin-top: 116px;   /* 64px header + 44px nav + 8px buffer */
+}
+
+/* ═══════════════════════════════════════════════
    MAIN CONTENT
    ═══════════════════════════════════════════════ */
 #main-content {

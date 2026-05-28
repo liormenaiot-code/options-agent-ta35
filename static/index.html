@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=38" />
+  <link rel="stylesheet" href="/static/style.css?v=39" />
 </head>
 <body>
 
@@ -237,11 +237,20 @@
   <!-- ══ MAIN CONTENT ═══════════════════════════════════════════════ -->
   <main id="main-content" class="hidden">
 
+    <!-- SECTION NAV -->
+    <nav id="section-nav" class="section-nav">
+      <a href="#home-section"  class="snav-link" data-sec="home-section">🏠 בית</a>
+      <a href="#pc-section"    class="snav-link" data-sec="pc-section">📊 פוזיציות פתוחות</a>
+      <a href="#stats-section" class="snav-link" data-sec="stats-section">📈 סטטיסטיקה</a>
+      <a href="#stocks-section"class="snav-link" data-sec="stocks-section">💹 מניות המדד</a>
+      <a href="#news-section"  class="snav-link" data-sec="news-section">📰 כתבות</a>
+    </nav>
+
     <!-- LIVE VERIFICATION BANNER -->
     <div id="live-verify-banner" class="live-verify-banner hidden"></div>
 
     <!-- TOP ROW: stat cards + arbitrage side by side -->
-    <div class="top-row">
+    <div class="top-row" id="home-section">
 
       <!-- Stat cards -->
       <section class="stat-row">
@@ -339,7 +348,7 @@
     </section>
 
     <!-- NEWS -->
-    <section class="news-section">
+    <section class="news-section" id="news-section">
       <div class="news-section-header">
         <h2 class="news-grad-title">BREAKING NEWS</h2>
         <span class="news-live-badge">LIVE</span>
@@ -367,6 +376,6 @@
   </main>
 
   <script src="/static/bg-shader.js"></script>
-  <script src="/static/app.js?v=38"></script>
+  <script src="/static/app.js?v=39"></script>
 </body>
 </html>

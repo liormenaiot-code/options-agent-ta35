@@ -13,7 +13,36 @@ const FETCH_TIMEOUT_MS = 200_000; // 3:20 min hard cap
 
 document.addEventListener('DOMContentLoaded', () => {
   loadExpiryDates().then(() => refreshData());
+  _initSectionNav();
 });
+
+// ── SECTION NAV — highlight active link on scroll ────────────────
+function _initSectionNav() {
+  const SECTIONS = ['home-section','pc-section','stats-section','stocks-section','news-section'];
+  const links = document.querySelectorAll('.snav-link[data-sec]');
+  if (!links.length) return;
+
+  const setActive = (id) => {
+    links.forEach(l => l.classList.toggle('active', l.dataset.sec === id));
+  };
+
+  // default: highlight first
+  setActive('home-section');
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) setActive(entry.target.id);
+    });
+  }, {
+    rootMargin: '-116px 0px -55% 0px',
+    threshold: 0
+  });
+
+  SECTIONS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) obs.observe(el);
+  });
+}
 
 // ── EXPIRY DATES — fetch real TASE dates for the Put/Call dropdown ──
 async function loadExpiryDates() {
