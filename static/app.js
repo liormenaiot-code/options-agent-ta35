@@ -990,39 +990,7 @@ function renderArbitrage(data) {
     ${rate}
   </div>`;
 
-  // ── Stocks table ──────────────────────────────────────────────────
-  let tableHtml = '';
-  if (stocks.length) {
-    const rows = stocks.map((s, i) => {
-      const usChg  = _arbChip(s.us_change_pct);
-      const taChg  = _arbChip(s.ta_change_pct);
-      const arbCur = _arbChip(s.arb_pct_current);
-      const ticker = s.us_ticker
-        ? `<span class="arb-ticker">${esc(s.us_ticker)}</span>` : '';
-      return `<tr class="arb-row">
-        <td class="arb-num">${i + 1}</td>
-        <td class="arb-name">${esc(s.name_he || '')}${ticker ? ' ' + ticker : ''}</td>
-        <td class="arb-pct">${arbCur}</td>
-        <td class="arb-pct">${taChg}</td>
-        <td class="arb-pct">${usChg}</td>
-      </tr>`;
-    }).join('');
-
-    tableHtml = `<div class="arb-table-wrap">
-      <table class="arb-table">
-        <thead><tr>
-          <th class="arb-th-num">#</th>
-          <th>מניה</th>
-          <th class="arb-th-pct">פער ארביטראז'</th>
-          <th class="arb-th-pct">ת"א שינוי%</th>
-          <th class="arb-th-pct">US שינוי%</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-  }
-
-  body.innerHTML = summaryHtml + tableHtml;
+  body.innerHTML = summaryHtml;
 }
 
 
