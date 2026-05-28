@@ -1469,6 +1469,80 @@ async def _fetch_ta35_stock_prices(client) -> list[dict]:
     return list(await asyncio.gather(*tasks))
 
 
+# ── GLOBAL FUTURES / INDICES ──────────────────────────────────────────
+# (name_he, yahoo_ticker, display_ticker, exchange_label)
+# Note: Eurex FDAX futures are not available via Yahoo Finance free API.
+# ^GDAXI (DAX 40 index) tracks FDAX1! futures within <0.1% intraday.
+GLOBAL_FUTURES = [
+    ("נאסד\"ק 100",  "NQ=F",    "NQ1!",   "CME"),
+    ("S&P 500",      "ES=F",    "ES1!",   "CME"),
+    ("DAX גרמניה",   "^GDAXI",  "DAX",    "Xetra"),
+]
+
+
+async def _fetch_one_future(client, name_he: str, yahoo_ticker: str,
+                            display_ticker: str, exchange: str) -> dict:
+    """Fetch a single futures contract price from Yahoo Finance v8/chart."""
+    base = {
+        "name_he":       name_he,
+        "ticker":        display_ticker,
+        "yahoo_ticker":  yahoo_ticker,
+        "exchange":      exchange,
+        "price":         None,
+        "change_pct":    None,
+        "prev_close":    None,
+        "currency":      "USD",
+        "market_state":  None,
+        "error":         None,
+    }
+    url = (f"https://query2.finance.yahoo.com/v8/finance/chart/{yahoo_ticker}"
+           "?interval=1d&range=2d")
+    try:
+        resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10)
+        if resp.status_code != 200:
+            base["error"] = f"HTTP {resp.status_code}"
+            return base
+        data   = resp.json()
+        result = data["chart"]["result"][0]
+        meta   = result["meta"]
+
+        price = meta.get("regularMarketPrice")
+        if price is not None:
+            base["price"] = round(float(price), 2)
+
+        prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+        if prev:
+            base["prev_close"] = round(float(prev), 2)
+
+        # Change% — Yahoo Finance returns a fraction for most tickers (0.01 = 1%).
+        # For indices like ^GDAXI it also returns a fraction.
+        # We compute from prev_close directly for reliability.
+        pct_raw = meta.get("regularMarketChangePercent")
+        if pct_raw is not None:
+            val = float(pct_raw)
+            # Heuristic: |val| > 5 → already in percent; otherwise multiply × 100
+            base["change_pct"] = round(val if abs(val) > 5 else val * 100, 2)
+        elif base["price"] and base["prev_close"] and base["prev_close"] != 0:
+            base["change_pct"] = round(
+                (base["price"] - base["prev_close"]) / base["prev_close"] * 100, 2
+            )
+
+        base["currency"]     = meta.get("currency", "USD")
+        base["market_state"] = meta.get("marketState", "")
+    except Exception as exc:
+        base["error"] = str(exc)[:80]
+    return base
+
+
+async def fetch_global_futures(client) -> list[dict]:
+    """Fetch all three global futures contracts concurrently."""
+    tasks = [
+        _fetch_one_future(client, name_he, yahoo_ticker, display_ticker, exchange)
+        for name_he, yahoo_ticker, display_ticker, exchange in GLOBAL_FUTURES
+    ]
+    return list(await asyncio.gather(*tasks))
+
+
 def get_expiry_dates() -> list[dict]:
     from datetime import date, timedelta
     today = date.today()

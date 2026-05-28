@@ -25,6 +25,7 @@ from scraper import (
     scrape_all, get_expiry_dates,
     _fetch_tase_putvscall, _fetch_tradeboost_expiry_dates, TASE_PUTVSCALL_SOURCE_URL,
     _fetch_ta35_stock_prices, _scrape_globes_arbitrage,
+    fetch_global_futures,
 )
 
 # ── IN-MEMORY CACHE ──────────────────────────────────────────────────
@@ -226,6 +227,42 @@ async def get_stocks(force: bool = Query(default=False)):
             "total_count":  len(stocks),
         }
         _stocks_cache = {"data": payload, "ts": time.time()}
+        return JSONResponse(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── GLOBAL FUTURES ───────────────────────────────────────────────────
+_futures_cache: dict = {"data": None, "ts": 0.0}
+FUTURES_CACHE_TTL = 60  # 1 minute — futures trade around the clock
+
+
+@app.get("/api/futures")
+async def get_futures(force: bool = Query(default=False)):
+    """
+    Returns live prices for NQ (Nasdaq 100), ES (S&P 500), FDAX (DAX) futures.
+    Source: Yahoo Finance v8 — regularMarketPrice (verified live data).
+    Cache TTL: 60 seconds.
+    """
+    global _futures_cache
+
+    if not force:
+        entry = _futures_cache
+        if entry["data"] and time.time() - entry["ts"] < FUTURES_CACHE_TTL:
+            return JSONResponse({**entry["data"], "from_cache": True})
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            futures = await fetch_global_futures(client)
+
+        payload = {
+            "futures":    futures,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "from_cache": False,
+            "source":     "Yahoo Finance v8 — regularMarketPrice",
+            "source_url": "https://finance.yahoo.com/",
+        }
+        _futures_cache = {"data": payload, "ts": time.time()}
         return JSONResponse(payload)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

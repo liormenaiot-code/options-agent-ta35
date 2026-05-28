@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=43" />
+  <link rel="stylesheet" href="/static/style.css?v=44" />
 </head>
 <body>
 
@@ -267,6 +267,17 @@
         </div>
       </section>
 
+      <!-- GLOBAL FUTURES — NQ / ES / DAX live prices -->
+      <section class="futures-card" id="futures-card">
+        <div class="futures-header">
+          <span class="futures-title">חוזים עתידיים עולמיים</span>
+          <span class="futures-updated" id="futures-updated"></span>
+        </div>
+        <div id="futures-body" class="futures-body">
+          <div class="futures-loading">טוען...</div>
+        </div>
+      </section>
+
       <!-- ARBITRAGE — Globes live data (moved here from below) -->
       <section class="arb-section" id="arb-section">
         <div class="arb-header">
@@ -392,6 +403,6 @@
   </main>
 
   <script src="/static/bg-shader.js"></script>
-  <script src="/static/app.js?v=43"></script>
+  <script src="/static/app.js?v=44"></script>
 </body>
 </html>

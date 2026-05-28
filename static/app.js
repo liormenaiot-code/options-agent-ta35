@@ -105,6 +105,7 @@ async function refreshData(force = false) {
     loadPutCall(pcSelectedExpiry, force);
     loadStocks(force);
     loadArbitrage(force);
+    loadFutures(force);
   } catch (err) {
     if (err.name === 'AbortError') showError('הניתוח לקח יותר מדי זמן — נסה שוב');
     else showError(err.message);
@@ -967,5 +968,79 @@ function renderArbitrage(data) {
   </div>`;
 
   body.innerHTML = summaryHtml;
+}
+
+
+// ── GLOBAL FUTURES — NQ / ES / DAX live prices ──────────────────────
+
+let _futuresData = null;
+let _futuresTimer = null;
+
+async function loadFutures(force = false) {
+  const body = document.getElementById('futures-body');
+  if (!body) return;
+
+  if (!force && _futuresData) { renderFutures(_futuresData); return; }
+
+  try {
+    const params = new URLSearchParams();
+    if (force) params.set('force', 'true');
+    const resp = await fetch(`/api/futures?${params.toString()}`);
+    if (!resp.ok) throw new Error(`שגיאת שרת: ${resp.status}`);
+    const data = await resp.json();
+    _futuresData = data;
+    renderFutures(data);
+
+    // Auto-refresh every 60 s (futures trade around the clock)
+    clearTimeout(_futuresTimer);
+    _futuresTimer = setTimeout(() => loadFutures(true), 60_000);
+  } catch (err) {
+    body.innerHTML = `<div class="futures-err">⚠ ${esc(err.message)}</div>`;
+  }
+}
+
+function renderFutures(data) {
+  const body = document.getElementById('futures-body');
+  const upd  = document.getElementById('futures-updated');
+  if (!body) return;
+
+  const futures = data.futures || [];
+  if (!futures.length) {
+    body.innerHTML = '<div class="futures-loading">אין נתונים</div>';
+    return;
+  }
+
+  if (upd && data.fetched_at) {
+    const d = new Date(data.fetched_at);
+    upd.textContent = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  body.innerHTML = futures.map(f => {
+    if (f.error && !f.price) {
+      return `<div class="futures-row">
+        <span class="futures-ticker">${esc(f.ticker)}</span>
+        <span class="futures-name">${esc(f.name_he)}</span>
+        <span class="futures-err">שגיאה</span>
+      </div>`;
+    }
+
+    const price = f.price != null
+      ? f.price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+      : '—';
+
+    const chgVal = f.change_pct;
+    let chgCls = 'neu', chgTxt = '—';
+    if (chgVal != null) {
+      chgCls = chgVal > 0 ? 'pos' : chgVal < 0 ? 'neg' : 'neu';
+      chgTxt = (chgVal > 0 ? '+' : '') + chgVal.toFixed(2) + '%';
+    }
+
+    return `<div class="futures-row">
+      <span class="futures-ticker">${esc(f.ticker)}</span>
+      <span class="futures-name">${esc(f.name_he)}</span>
+      <span class="futures-price">${price}</span>
+      <span class="futures-chg ${chgCls}">${chgTxt}</span>
+    </div>`;
+  }).join('');
 }
 

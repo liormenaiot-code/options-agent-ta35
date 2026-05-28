@@ -2212,7 +2212,7 @@ body::after {
   margin-top: 3px;
 }
 
-/* ─── TOP ROW: stat cards + arb side by side ── */
+/* ─── TOP ROW: stat cards + futures + arb side by side ── */
 .top-row {
   display: flex;
   gap: 16px;
@@ -2223,11 +2223,112 @@ body::after {
   margin-bottom: 0;
   flex-shrink: 0;
 }
+.top-row .futures-card {
+  margin: 0;
+  flex: 0 0 auto;
+  min-width: 220px;
+}
 .top-row .arb-section {
   margin: 0;
   flex: 1;
   min-width: 0;
   max-width: none;
+}
+
+/* ─── FUTURES CARD ─────────────────────────── */
+.futures-card {
+  background: var(--bg3);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px 12px;
+  position: relative;
+  overflow: hidden;
+}
+.futures-card::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--indigo), var(--cyan));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.futures-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.futures-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--indigo);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.futures-updated {
+  font-size: 0.68rem;
+  color: var(--slate);
+}
+.futures-loading {
+  font-size: 0.8rem;
+  color: var(--slate);
+  padding: 8px 0;
+}
+.futures-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.futures-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.futures-row:last-child { border-bottom: none; }
+.futures-ticker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--slate);
+  width: 48px;
+  flex-shrink: 0;
+  font-family: 'Courier New', monospace;
+}
+.futures-name {
+  font-size: 0.78rem;
+  color: var(--white);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.futures-price {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--white);
+  white-space: nowrap;
+  text-align: left;
+  direction: ltr;
+}
+.futures-chg {
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 52px;
+  text-align: left;
+  direction: ltr;
+}
+.futures-chg.pos { color: #4ade80; }
+.futures-chg.neg { color: #f87171; }
+.futures-chg.neu { color: var(--slate); }
+.futures-err {
+  font-size: 0.72rem;
+  color: var(--slate);
+  font-style: italic;
 }
 
 /* ─── STAT ROW — 2 cards, full width ────────── */
@@ -2369,6 +2470,7 @@ body::after {
   .stat-row { grid-template-columns: 1fr; gap: 12px; }
   .top-row { flex-direction: column; }
   .top-row .arb-section { max-width: none; }
+  .top-row .futures-card { min-width: 0; }
 }
 
 @media (max-width: 600px) {
