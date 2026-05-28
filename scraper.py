@@ -839,7 +839,8 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict
                             wait_until="domcontentloaded", timeout=50_000)
 
             # ── Cookie consent ────────────────────────────────────────
-            for txt in ["קבל הכל", "Accept All", "I Accept", "הסכם", "Agree"]:
+            # NOTE: investing.com Hebrew uses "אני מאשר" as the accept button
+            for txt in ["אני מאשר", "קבל הכל", "Accept All", "I Accept", "הסכם", "Agree"]:
                 try:
                     btn = page.get_by_text(txt, exact=False).first
                     if await btn.is_visible(timeout=1_500):
@@ -928,31 +929,16 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict
                 except Exception:
                     pass
 
-            # ── Select "הכל" (all strikes) in selectStrike ──────────
-            # So we get all strikes, not just "ליד הכסף" (near-the-money)
-            try:
-                strike_opts = await page.evaluate("""
-                    () => {
-                        const s = document.getElementById('selectStrike');
-                        if (!s) return [];
-                        return Array.from(s.options).map(o => ({v: o.value, t: o.text.trim()}));
-                    }
-                """)
-                # Find "הכל" option, or fallback to the option with lowest value (usually "all")
-                kol_val = None
-                for sopt in strike_opts:
-                    t = sopt.get("t", "")
-                    if "הכל" in t or "all" in t.lower() or "כולם" in t:
-                        kol_val = sopt["v"]
-                        break
-                if kol_val is None and strike_opts:
-                    # Last option is often "all strikes" on investing.com
-                    kol_val = strike_opts[-1]["v"]
-                if kol_val is not None:
-                    await page.select_option("#selectStrike", value=str(kol_val))
-                    await page.wait_for_timeout(2_500)
-            except Exception:
-                pass
+            # ── Strike filter: intentionally keep default "ליד הכסף" ──
+            # We do NOT select "הכל" (all strikes).
+            # Deep OTM/ITM options (e.g. K=2500 when index is at 4430) have
+            # stale last-trade prices from years ago — they produce nonsensical
+            # values that confuse users comparing the app to investing.com.
+            # The page defaults to "ליד הכסף" which shows only clean, active,
+            # near-ATM strikes — exactly what users see on the live site.
+            # Pass 3 (below, after pass 2) extends coverage to ITM and OTM
+            # using the investing.com sub-filters (which still avoid deep-stale strikes).
+            pass  # intentional no-op: keep default "ליד הכסף" here
 
             # ── Scroll table to trigger lazy-load (combined view) ─────
             prev = 0
@@ -1040,6 +1026,37 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict
                             pv = puts_vol_map.get(item["strike"], 0)
                             if pv:
                                 item["put_vol"] = pv
+                except Exception:
+                    pass
+
+            # ── Pass 3: ITM + OTM views for broader clean coverage ──────────
+            # Loads "in_the_money" and "out_of_money" sub-filters to get strikes
+            # beyond "ליד הכסף" without pulling in extreme deep-stale options.
+            # Only runs when we're in DOM mode (not XHR captured).
+            if not captured:
+                try:
+                    pass3_strikes_seen = {it["strike"] for it in items}
+                    for sv in ("in_the_money", "out_of_money"):
+                        try:
+                            await page.select_option("#selectStrike", value=sv)
+                            await page.wait_for_timeout(1_800)
+                            dom_extra = await page.evaluate(_JS_EXTRACT)
+                            extra_items = _parse_investing_dom(dom_extra.get("rows", []))
+                            for it in extra_items:
+                                k = it["strike"]
+                                if k not in pass3_strikes_seen:
+                                    items.append(it)
+                                    pass3_strikes_seen.add(k)
+                                else:
+                                    # Fill in any missing fields on existing item
+                                    existing = next((x for x in items if x["strike"] == k), None)
+                                    if existing:
+                                        for field in ("call_last_rate", "call_vol", "put_last_rate", "put_vol"):
+                                            if not existing.get(field) and it.get(field):
+                                                existing[field] = it[field]
+                        except Exception:
+                            continue
+                    items = sorted(items, key=lambda x: x["strike"])
                 except Exception:
                     pass
 
