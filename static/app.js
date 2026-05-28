@@ -661,21 +661,25 @@ function renderPutCall(data) {
     const putLast  = r.put_last_rate  != null ? r.put_last_rate.toLocaleString('he-IL')  : '—';
     const putVol   = (r.put_vol   != null && r.put_vol   > 0) ? r.put_vol.toLocaleString('he-IL')   : '—';
 
-    // Volume bars (investing.com doesn't expose OI for this table)
+    // Heatmap intensity buckets (1-5) based on volume relative to max
+    const callInt = Math.min(5, Math.ceil((r.call_vol || 0) / maxOI * 5));
+    const putInt  = Math.min(5, Math.ceil((r.put_vol  || 0) / maxOI * 5));
+
+    // Volume bars
     const callBarW = Math.round((r.call_vol || 0) / maxOI * 60);
     const putBarW  = Math.round((r.put_vol  || 0) / maxOI * 60);
 
     return `<tr${atmClass}>
-      <td class="pc-td-call">
+      <td class="pc-td-call pc-hm-call" data-i="${callInt}">
         <div class="pc-oi-bar-wrap">
           <span>${callVol}</span>
           <div class="pc-oi-bar call" style="width:${callBarW}px"></div>
         </div>
       </td>
-      <td class="pc-td-call" style="font-size:0.88rem;font-weight:600">${callLast}</td>
+      <td class="pc-td-call">${callLast}</td>
       <td class="pc-td-mid">${strike}${isAtm ? ' ◉' : ''}</td>
-      <td class="pc-td-put" style="font-size:0.88rem;font-weight:600">${putLast}</td>
-      <td class="pc-td-put">
+      <td class="pc-td-put">${putLast}</td>
+      <td class="pc-td-put pc-hm-put" data-i="${putInt}">
         <div class="pc-oi-bar-wrap" style="flex-direction:row-reverse">
           <span>${putVol}</span>
           <div class="pc-oi-bar put" style="width:${putBarW}px"></div>

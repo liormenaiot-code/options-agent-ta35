@@ -1,5 +1,5 @@
-/* ═══════════════════════════════════════════════
-   DESIGN TOKENS — Neutral-950 / Cyan-Indigo Palette
+﻿/* ═══════════════════════════════════════════════
+   DESIGN TOKENS — NVIDIA Green + Gold / Bloomberg Terminal
    ═══════════════════════════════════════════════ */
 :root {
   /* Backgrounds — glass / transparent */
@@ -10,18 +10,18 @@
   --border2: rgba(255, 255, 255, 0.12);
   --glass-blur: blur(18px);
 
-  /* PALETTE — cyan primary / indigo secondary */
+  /* PALETTE — NVIDIA green primary / gold secondary */
   --slate:  #64748b;   /* slate-500  — subtle accents   */
-  --cyan:   #22d3ee;   /* cyan-400   — primary accent   */
+  --cyan:   #76b900;   /* NVIDIA green — primary accent */
   --white:  #f1f5f9;   /* slate-100  — primary text     */
-  --indigo: #818cf8;   /* indigo-400 — secondary accent */
+  --indigo: #c8a832;   /* Gold         — secondary accent */
 
   --slate-dim:  rgba(100, 116, 139, 0.12);
-  --cyan-dim:   rgba(34,  211, 238, 0.10);
+  --cyan-dim:   rgba(118, 185, 0, 0.10);
   --white-dim:  rgba(241, 245, 249, 0.07);
-  --indigo-dim: rgba(129, 140, 248, 0.10);
-  --indigo-glow:rgba(129, 140, 248, 0.28);
-  --cyan-glow:  rgba(34,  211, 238, 0.28);
+  --indigo-dim: rgba(200, 168, 50, 0.10);
+  --indigo-glow:rgba(200, 168, 50, 0.28);
+  --cyan-glow:  rgba(118, 185, 0, 0.28);
 
   /* Aliases so old references still resolve */
   --tan:       var(--cyan);
@@ -35,11 +35,11 @@
   --tan-glow:  var(--cyan-glow);
   --sage-glow: var(--indigo-glow);
 
-  /* Main gradients */
-  --grad:        linear-gradient(135deg, #22d3ee 0%, #818cf8 100%);
-  --grad-h:      linear-gradient(90deg,  #22d3ee 0%, #f1f5f9 50%, #818cf8 100%);
-  --grad-title:  linear-gradient(135deg, #f1f5f9 0%, #22d3ee 50%, #818cf8 100%);
-  --grad-border: linear-gradient(90deg,  #22d3ee, #818cf8, #f1f5f9);
+  /* Main gradients — NVIDIA green to gold */
+  --grad:        linear-gradient(135deg, #76b900 0%, #c8a832 100%);
+  --grad-h:      linear-gradient(90deg,  #76b900 0%, #f1f5f9 50%, #c8a832 100%);
+  --grad-title:  linear-gradient(135deg, #f1f5f9 0%, #76b900 50%, #c8a832 100%);
+  --grad-border: linear-gradient(90deg,  #76b900, #c8a832, #f1f5f9);
 
   /* FUNCTIONAL — semantic up/down colours */
   --green:     #4ade80;
@@ -51,8 +51,8 @@
   --text-dim: rgba(226, 232, 240, 0.55);
   --text-xs:  rgba(226, 232, 240, 0.32);
 
-  --radius:    12px;
-  --radius-lg: 20px;
+  --radius:    8px;
+  --radius-lg: 14px;
 }
 
 /* ═══════════════════════════════════════════════
@@ -66,7 +66,7 @@
     opacity: 0.9;
   }
   50% {
-    filter: brightness(1.12) drop-shadow(0 0 18px rgba(129, 140, 248, 0.28));
+    filter: brightness(1.12) drop-shadow(0 0 18px rgba(200, 168, 50, 0.28));
     opacity: 1;
   }
 }
@@ -102,11 +102,11 @@ html { font-size: 16px; scroll-behavior: smooth; }
    ═══════════════════════════════════════════════ */
 ::-webkit-scrollbar              { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track        { background: transparent; }
-::-webkit-scrollbar-thumb        { background: rgba(34,211,238,0.25); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover  { background: rgba(34,211,238,0.50); }
+::-webkit-scrollbar-thumb        { background: rgba(118,185,0,0.25); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover  { background: rgba(118,185,0,0.50); }
 ::-webkit-scrollbar-corner       { background: transparent; }
 /* Firefox */
-* { scrollbar-width: thin; scrollbar-color: rgba(34,211,238,0.25) transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(118,185,0,0.25) transparent; }
 
 /* ── WebGL background canvas ── */
 #bg-shader {
@@ -133,8 +133,8 @@ body::before {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(99,102,241,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99,102,241,0.025) 1px, transparent 1px);
+    linear-gradient(rgba(118,185,0,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(118,185,0,0.025) 1px, transparent 1px);
   background-size: 64px 64px;
   pointer-events: none;
   z-index: 0;
@@ -211,7 +211,7 @@ body::after {
   border-radius: 24px;
   padding: 48px 44px 40px;
   width: min(520px, 92vw);
-  box-shadow: 0 0 80px rgba(34, 211, 238, 0.08), 0 32px 64px rgba(0,0,0,0.6);
+  box-shadow: 0 0 80px rgba(118, 185, 0, 0.08), 0 32px 64px rgba(0,0,0,0.6);
   position: relative;
 }
 
@@ -228,8 +228,8 @@ body::after {
   background: var(--border2);
   transition: background 0.3s;
 }
-.wizard-progress-dot.done { background: #22d3ee; }
-.wizard-progress-dot.active { background: rgba(34,211,238,0.45); }
+.wizard-progress-dot.done { background: #76b900; }
+.wizard-progress-dot.active { background: rgba(118,185,0,0.45); }
 
 .wizard-q {
   font-size: 1.3rem;
@@ -265,8 +265,8 @@ body::after {
 }
 
 .wopt:hover {
-  border-color: rgba(34,211,238,0.5);
-  background: rgba(34,211,238,0.06);
+  border-color: rgba(118,185,0,0.5);
+  background: rgba(118,185,0,0.06);
   transform: translateX(-3px);
 }
 
@@ -302,7 +302,7 @@ body::after {
 .wizard-start-btn {
   width: 100%;
   padding: 16px;
-  background: linear-gradient(120deg, #22d3ee, #818cf8);
+  background: linear-gradient(120deg, #76b900, #c8a832);
   color: #030712;
   border: none;
   border-radius: 12px;
@@ -513,7 +513,7 @@ body::after {
   transition: color 0.2s, border-color 0.2s;
   flex-shrink: 0;
 }
-.hdr-settings-btn:hover { color: #22d3ee; border-color: rgba(34,211,238,0.4); }
+.hdr-settings-btn:hover { color: #76b900; border-color: rgba(118,185,0,0.4); }
 
 .logo-text em {
   font-style: normal;
@@ -525,7 +525,7 @@ body::after {
   align-items: center;
   gap: 6px;
   background: transparent;
-  border: 1px solid rgba(129,140,248,0.3);
+  border: 1px solid rgba(200,168,50,0.3);
   border-radius: 8px;
   color: var(--sage);
   font-family: 'Heebo', sans-serif;
@@ -538,8 +538,8 @@ body::after {
   flex-shrink: 0;
 }
 .hdr-refresh-btn:hover {
-  background: rgba(129,140,248,0.08);
-  border-color: rgba(129,140,248,0.6);
+  background: rgba(200,168,50,0.08);
+  border-color: rgba(200,168,50,0.6);
   color: var(--cream);
 }
 .hdr-refresh-btn:active .hdr-refresh-icon { display: inline-block; animation: spin 0.5s linear; }
@@ -618,8 +618,8 @@ body::after {
   align-items: center;
   gap: 8px;
   background: transparent;
-  color: #22d3ee;
-  border: 1.5px solid rgba(34, 211, 238, 0.45);
+  color: #76b900;
+  border: 1.5px solid rgba(118, 185, 0, 0.45);
   border-radius: 999px;
   padding: 13px 44px;
   font-family: 'Heebo', sans-serif;
@@ -633,20 +633,20 @@ body::after {
 }
 
 .pill-ghost:hover:not(:disabled) {
-  border-color: rgba(34, 211, 238, 0.8);
-  color: #a5f3fc;
-  box-shadow: 0 0 18px rgba(34, 211, 238, 0.25), 0 0 40px rgba(34, 211, 238, 0.1);
+  border-color: rgba(118, 185, 0, 0.8);
+  color: #a3d900;
+  box-shadow: 0 0 18px rgba(118, 185, 0, 0.25), 0 0 40px rgba(118, 185, 0, 0.1);
   transform: translateY(-1px);
 }
 
 .pill-ghost:active:not(:disabled) {
   transform: scale(0.97);
-  border-color: #22d3ee;
+  border-color: #76b900;
   color: #e0f7fa;
   box-shadow:
-    0 0 28px rgba(34, 211, 238, 0.7),
-    0 0 60px rgba(34, 211, 238, 0.35),
-    0 0 100px rgba(34, 211, 238, 0.15);
+    0 0 28px rgba(118, 185, 0, 0.7),
+    0 0 60px rgba(118, 185, 0, 0.35),
+    0 0 100px rgba(118, 185, 0, 0.15);
 }
 
 .pill-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -709,7 +709,7 @@ body::after {
   font-size: clamp(2.4rem, 6.5vw, 5rem);
   font-weight: 900;
   white-space: nowrap;
-  background: linear-gradient(120deg, #22d3ee 0%, #a5f3fc 40%, #818cf8 100%);
+  background: linear-gradient(120deg, #76b900 0%, #a3d900 40%, #c8a832 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -718,11 +718,11 @@ body::after {
 
 @keyframes glow-pulse {
   0%, 100% {
-    filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.45)) drop-shadow(0 0 35px rgba(34, 211, 238, 0.15));
+    filter: drop-shadow(0 0 12px rgba(118, 185, 0, 0.45)) drop-shadow(0 0 35px rgba(118, 185, 0, 0.15));
     opacity: 0.9;
   }
   50% {
-    filter: drop-shadow(0 0 28px rgba(34, 211, 238, 0.9)) drop-shadow(0 0 70px rgba(34, 211, 238, 0.35));
+    filter: drop-shadow(0 0 28px rgba(118, 185, 0, 0.9)) drop-shadow(0 0 70px rgba(118, 185, 0, 0.35));
     opacity: 1;
   }
 }
@@ -731,23 +731,23 @@ body::after {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.14em;
-  color: #67e8f9;
+  color: #8fce00;
   animation: sub-glow 3.5s ease-in-out infinite;
 }
 
 @keyframes sub-glow {
   0%, 100% {
     text-shadow:
-      0 0 10px rgba(34, 211, 238, 0.6),
-      0 0 28px rgba(34, 211, 238, 0.25),
-      0 0 55px rgba(34, 211, 238, 0.1);
+      0 0 10px rgba(118, 185, 0, 0.6),
+      0 0 28px rgba(118, 185, 0, 0.25),
+      0 0 55px rgba(118, 185, 0, 0.1);
     opacity: 0.85;
   }
   50% {
     text-shadow:
-      0 0 18px rgba(34, 211, 238, 1),
-      0 0 45px rgba(34, 211, 238, 0.55),
-      0 0 90px rgba(34, 211, 238, 0.25);
+      0 0 18px rgba(118, 185, 0, 1),
+      0 0 45px rgba(118, 185, 0, 0.55),
+      0 0 90px rgba(118, 185, 0, 0.25);
     opacity: 1;
   }
 }
@@ -772,7 +772,7 @@ body::after {
 
 .signal-giant.bullish {
   color: var(--sage);
-  text-shadow: 0 0 60px rgba(129,140,248,0.3), 0 0 120px rgba(129,140,248,0.1);
+  text-shadow: 0 0 60px rgba(200,168,50,0.3), 0 0 120px rgba(200,168,50,0.1);
   animation: soft-glow 3s ease-in-out infinite;
 }
 
@@ -783,7 +783,7 @@ body::after {
 
 .signal-giant.neutral {
   color: var(--cream);
-  text-shadow: 0 0 60px rgba(226,232,240,0.2), 0 0 120px rgba(34,211,238,0.1);
+  text-shadow: 0 0 60px rgba(226,232,240,0.2), 0 0 120px rgba(118,185,0,0.1);
   animation: soft-glow 4s ease-in-out infinite;
 }
 
@@ -797,7 +797,7 @@ body::after {
 
 .signal-conf-badge {
   background: var(--tan-dim);
-  border: 1px solid rgba(34,211,238,0.3);
+  border: 1px solid rgba(118,185,0,0.3);
   border-radius: 999px;
   padding: 6px 18px;
   font-size: 0.85rem;
@@ -843,7 +843,7 @@ body::after {
 }
 
 .snav-link.active {
-  background: rgba(34, 211, 238, 0.12);
+  background: rgba(118, 185, 0, 0.12);
   color: var(--cyan);
   font-weight: 700;
 }
@@ -998,7 +998,7 @@ body::after {
   font-weight: 800;
   letter-spacing: 0.15em;
   color: var(--sage);
-  border: 1px solid rgba(129,140,248,0.25);
+  border: 1px solid rgba(200,168,50,0.25);
   border-radius: 4px;
   padding: 2px 8px;
   background: var(--sage-dim);
@@ -1170,11 +1170,11 @@ body::after {
   color: var(--cream);
   line-height: 1.3;
 }
-.sg-val.sg-cyan   { color: #58a6ff; }
-.sg-val.sg-orange { color: var(--cyan); }
+.sg-val.sg-cyan   { color: #76b900; }
+.sg-val.sg-orange { color: #c8a832; }
 .sg-val.sg-green  { color: #3fb950; }
 .sg-val.sg-red    { color: #f85149; }
-.sg-val.sg-purple { color: #bc8cff; }
+.sg-val.sg-purple { color: #c8a832; }
 
 .sg-hint {
   font-size: 10px;
@@ -1191,7 +1191,7 @@ body::after {
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   font-size: 12px;
-  color: #67e8f9;
+  color: #8fce00;
   line-height: 1.4;
   margin-bottom: 10px;
   letter-spacing: 0.01em;
@@ -1258,7 +1258,7 @@ body::after {
 }
 .bni-row.bni-bull { border-right: 3px solid var(--green); background: rgba(109,190,140,.08); }
 .bni-row.bni-bear { border-right: 3px solid var(--red);   background: rgba(224,112,112,.08); }
-.bni-row.bni-neu  { border-right: 3px solid var(--cyan);   background: rgba(34,211,238,.08);  }
+.bni-row.bni-neu  { border-right: 3px solid var(--cyan);   background: rgba(118,185,0,.08);  }
 
 .bni-icon { font-size: 16px; flex-shrink: 0; }
 .bni-headline {
@@ -1319,7 +1319,7 @@ body::after {
   font-weight: 700;
   color: var(--cyan);
   background: var(--tan-dim);
-  border: 1px solid rgba(34,211,238,0.3);
+  border: 1px solid rgba(118,185,0,0.3);
   border-radius: 6px;
   padding: 3px 10px;
   white-space: nowrap;
@@ -1360,7 +1360,7 @@ body::after {
   align-items: center;
   gap: 6px;
   background: transparent;
-  border: 1px solid rgba(129,140,248,0.3);
+  border: 1px solid rgba(200,168,50,0.3);
   border-radius: 8px;
   color: var(--sage);
   font-family: 'Heebo', sans-serif;
@@ -1374,8 +1374,8 @@ body::after {
   flex-shrink: 0;
 }
 .pc-analyze-btn:hover {
-  background: rgba(129,140,248,0.08);
-  border-color: rgba(129,140,248,0.6);
+  background: rgba(200,168,50,0.08);
+  border-color: rgba(200,168,50,0.6);
   color: var(--cream);
 }
 .pc-analyze-btn:disabled {
@@ -1422,7 +1422,7 @@ body::after {
   border-color: rgba(255,255,255,0.3);
 }
 .pc-filter-btn.active {
-  background: rgba(34,211,238,0.12);
+  background: rgba(118,185,0,0.12);
   border-color: var(--cyan);
   color: var(--cyan);
   font-weight: 600;
@@ -1567,7 +1567,7 @@ body::after {
 }
 
 .pc-th-call { color: var(--green); text-align: right; }
-.pc-th-mid  { color: var(--cyan);   text-align: center; background: rgba(34,211,238,0.07); }
+.pc-th-mid  { color: var(--cyan);   text-align: center; background: rgba(118,185,0,0.07); }
 .pc-th-put  { color: var(--red);   text-align: right; }
 
 .pc-table td {
@@ -1583,14 +1583,14 @@ body::after {
 
 .pc-td-call { color: rgba(109,190,140,0.9); text-align: right; }
 .pc-td-mid  { color: var(--cream); text-align: center; font-weight: 700;
-              background: rgba(34,211,238,0.05); }
+              background: rgba(118,185,0,0.05); }
 .pc-td-put  { color: rgba(224,112,112,0.9); text-align: right; }
 
 /* ATM row (at-the-money strike) */
 .pc-table tbody tr.pc-atm td {
-  background: rgba(34,211,238,0.10) !important;
-  border-top: 1px solid rgba(34,211,238,0.35);
-  border-bottom: 1px solid rgba(34,211,238,0.35);
+  background: rgba(118,185,0,0.10) !important;
+  border-top: 1px solid rgba(118,185,0,0.35);
+  border-bottom: 1px solid rgba(118,185,0,0.35);
 }
 .pc-table tbody tr.pc-atm .pc-td-mid {
   color: var(--cyan);
@@ -1765,7 +1765,7 @@ body::after {
   white-space: nowrap;
 }
 .stats-table tbody tr:last-child td { border-bottom: none; }
-.stats-table tbody tr:hover { background: rgba(34,211,238,0.05); }
+.stats-table tbody tr:hover { background: rgba(118,185,0,0.05); }
 
 /* Column helpers */
 .st-range { font-weight: 700; font-size: 13px; color: var(--cream); min-width: 52px; }
@@ -1804,7 +1804,7 @@ body::after {
 .bar-green  { background: var(--green); }
 .bar-sage   { background: var(--sage);  }
 .bar-tan    { background: var(--tan);   }
-.bar-orange { background: #a78bfa;      }
+.bar-orange { background: #c8a832;      }
 
 /* Day note */
 .st-note            { font-size: 10.5px; color: var(--text-dim); }
@@ -1894,7 +1894,7 @@ body::after {
   position: relative;
 }
 .news-impact-alert.nia-bull  { border-color: rgba(63,185,80,0.35); background: rgba(63,185,80,0.07); }
-.news-impact-alert.nia-neu   { border-color: rgba(34,211,238,0.3); background: rgba(34,211,238,0.05); }
+.news-impact-alert.nia-neu   { border-color: rgba(118,185,0,0.3); background: rgba(118,185,0,0.05); }
 .nia-icon { font-size: 20px; flex-shrink: 0; }
 .nia-body { flex: 1; min-width: 0; }
 .nia-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cyan); opacity: 0.7; margin-bottom: 3px; }
@@ -1902,7 +1902,7 @@ body::after {
 .nia-badge { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
 .nia-badge.bear { background: rgba(248,81,73,0.2);  color: #f85149; border: 1px solid rgba(248,81,73,0.4); }
 .nia-badge.bull { background: rgba(63,185,80,0.2);  color: #3fb950; border: 1px solid rgba(63,185,80,0.4); }
-.nia-badge.neu  { background: rgba(34,211,238,0.2); color: var(--cyan); border: 1px solid rgba(34,211,238,0.3); }
+.nia-badge.neu  { background: rgba(118,185,0,0.2); color: var(--cyan); border: 1px solid rgba(118,185,0,0.3); }
 
 /* ═══════════════════════════════════════════════
    TRADEBOOST STRATEGY BANNER
@@ -1911,7 +1911,7 @@ body::after {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: linear-gradient(135deg, rgba(34,211,238,0.08) 0%, rgba(129,140,248,0.07) 100%);
+  background: linear-gradient(135deg, rgba(118,185,0,0.08) 0%, rgba(200,168,50,0.07) 100%);
   border: 1px solid var(--border2);
   border-right: 3px solid var(--cyan);
   border-radius: var(--radius-lg);
@@ -2389,7 +2389,7 @@ body::after {
 .opt-metric-val   { font-size: 1.15rem; font-weight: 700; }
 .opt-metric-sub   { font-size: 0.72rem; color: var(--text-dim); margin-top: 3px; }
 
-.opt-gold    { color: #22d3ee; }
+.opt-gold    { color: #c8a832; }
 .opt-green   { color: var(--green); }
 .opt-red     { color: var(--red); }
 .opt-neutral { color: var(--cyan); }
@@ -2426,18 +2426,18 @@ body::after {
 .chain-strike-cell {
   font-weight: 800;
   color: var(--cyan);
-  background: rgba(34,211,238,0.07);
+  background: rgba(118,185,0,0.07);
   position: relative;
 }
 
-.chain-atm-row { background: rgba(34,211,238,0.06); }
-.chain-atm-row .chain-strike-cell { color: #22d3ee; }
+.chain-atm-row { background: rgba(118,185,0,0.06); }
+.chain-atm-row .chain-strike-cell { color: #76b900; }
 
 .atm-tag {
   display: inline-block;
   font-size: 0.6rem;
-  background: rgba(34,211,238,0.2);
-  color: #22d3ee;
+  background: rgba(118,185,0,0.2);
+  color: #76b900;
   border-radius: 4px;
   padding: 1px 5px;
   margin-right: 6px;
@@ -2684,8 +2684,8 @@ body::after {
   gap: 4px;
   padding: 2px 7px;
   border-radius: 4px;
-  border: 1px solid rgba(34,211,238,0.3);
-  background: rgba(34,211,238,0.07);
+  border: 1px solid rgba(118,185,0,0.3);
+  background: rgba(118,185,0,0.07);
   color: var(--cyan);
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.68rem;
@@ -2723,7 +2723,7 @@ body::after {
 }
 .us-live { background: rgba(74,222,128,0.18);  color: var(--green);  border: 1px solid rgba(74,222,128,0.35); }
 .us-pre  { background: rgba(251,191,36,0.15);  color: #fbbf24;       border: 1px solid rgba(251,191,36,0.35); }
-.us-ah   { background: rgba(129,140,248,0.15); color: var(--indigo); border: 1px solid rgba(129,140,248,0.35); }
+.us-ah   { background: rgba(200,168,50,0.15); color: var(--indigo); border: 1px solid rgba(200,168,50,0.35); }
 .us-cls  { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid var(--border); }
 
 /* smaller change chip variant used in US column */
@@ -2960,4 +2960,244 @@ body::after {
     border-right: none;
     border-top: 1px solid rgba(255,255,255,0.07);
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN OVERHAUL v46 — Bloomberg Terminal + Dark Luxury
+   NVIDIA Green palette, compact KPIs, heatmap table, mono numbers
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── 1. COMPACT KPI CARDS ──────────────────────────────────────── */
+.stat-card {
+  padding: 16px 18px !important;
+}
+
+.stat-label {
+  font-size: 0.68rem !important;
+  letter-spacing: 0.16em !important;
+  margin-bottom: 6px !important;
+}
+
+.stat-num {
+  font-size: clamp(1.4rem, 3vw, 2rem) !important;
+  font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px !important;
+}
+
+.stat-sub {
+  font-size: 0.75rem !important;
+}
+
+/* ── 2. BLOOMBERG MONOSPACE NUMBERS ────────────────────────────── */
+.wl-price,
+.wl-us-price,
+.futures-price,
+.futures-chg,
+.pc-sum-val,
+.pc-mp-val,
+.ssb-val,
+.arb-sum-val,
+.ticker-price,
+.ticker-change,
+.pct-pill-val {
+  font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+}
+
+/* ── 3. CONSISTENT PANEL HEADER FONT ───────────────────────────── */
+.panel-title,
+.futures-title,
+.stocks-title,
+.arb-title,
+.pc-title,
+.risks-title,
+.tech-title,
+.stats-col-title {
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+}
+
+/* ── 4. TIGHTER MAIN CONTENT SPACING ───────────────────────────── */
+#main-content {
+  gap: 16px !important;
+  padding: 24px 36px 64px !important;
+}
+
+/* ── 5. OPTIONS TABLE — BLOOMBERG TERMINAL STYLE ───────────────── */
+.pc-table {
+  font-size: 0.75rem !important;
+  font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+}
+
+.pc-table th {
+  padding: 6px 10px !important;
+  font-size: 0.6rem !important;
+}
+
+.pc-table td {
+  padding: 5px 10px !important;
+  font-size: 0.75rem !important;
+}
+
+/* ATM row — stronger NVIDIA green highlight */
+.pc-table tbody tr.pc-atm td {
+  background: rgba(118, 185, 0, 0.10) !important;
+  border-top: 1px solid rgba(118, 185, 0, 0.40) !important;
+  border-bottom: 1px solid rgba(118, 185, 0, 0.40) !important;
+}
+.pc-table tbody tr.pc-atm .pc-td-mid {
+  color: #76b900 !important;
+  text-shadow: 0 0 12px rgba(118, 185, 0, 0.5);
+}
+
+/* Zebra striping — subtle Bloomberg rows */
+.pc-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.012);
+}
+
+/* ── 6. HEATMAP — intensity background for call/put volume ─────── */
+/* Applied via data-intensity="0..10" on td.pc-hm-call / td.pc-hm-put */
+td.pc-hm-call[data-i="1"] { background: rgba(74, 222, 128, 0.04); }
+td.pc-hm-call[data-i="2"] { background: rgba(74, 222, 128, 0.08); }
+td.pc-hm-call[data-i="3"] { background: rgba(74, 222, 128, 0.13); }
+td.pc-hm-call[data-i="4"] { background: rgba(74, 222, 128, 0.18); }
+td.pc-hm-call[data-i="5"] { background: rgba(74, 222, 128, 0.24); }
+
+td.pc-hm-put[data-i="1"]  { background: rgba(248, 113, 113, 0.04); }
+td.pc-hm-put[data-i="2"]  { background: rgba(248, 113, 113, 0.08); }
+td.pc-hm-put[data-i="3"]  { background: rgba(248, 113, 113, 0.13); }
+td.pc-hm-put[data-i="4"]  { background: rgba(248, 113, 113, 0.18); }
+td.pc-hm-put[data-i="5"]  { background: rgba(248, 113, 113, 0.24); }
+
+/* Heatmap text brightens with intensity */
+td.pc-hm-call[data-i="4"],
+td.pc-hm-call[data-i="5"] { color: #6dfc9e !important; }
+td.pc-hm-put[data-i="4"],
+td.pc-hm-put[data-i="5"]  { color: #ff8888 !important; }
+
+/* ── 7. STRONGER PANEL BORDERS — terminal feel ─────────────────── */
+.scanner-panel,
+.pc-section,
+.risks-section,
+.news-section,
+.stats-section,
+.stocks-section,
+.arb-section {
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+.scanner-panel:hover,
+.pc-section:hover {
+  border-color: rgba(118, 185, 0, 0.20) !important;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.30),
+              0 0 0 1px rgba(118, 185, 0, 0.08),
+              inset 0 1px 0 rgba(255,255,255,0.06) !important;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+/* ── 8. HEADER — NVIDIA accent ──────────────────────────────────── */
+#site-header {
+  border-bottom-color: rgba(118, 185, 0, 0.15) !important;
+}
+
+.logo-dot {
+  background: linear-gradient(135deg, #76b900, #c8a832) !important;
+}
+
+/* Analyze button — NVIDIA green accent */
+.hdr-refresh-btn {
+  border-color: rgba(118, 185, 0, 0.35) !important;
+  color: #76b900 !important;
+}
+.hdr-refresh-btn:hover {
+  background: rgba(118, 185, 0, 0.09) !important;
+  border-color: rgba(118, 185, 0, 0.65) !important;
+  color: #a3d900 !important;
+}
+
+/* Main pill button NVIDIA green → gold gradient */
+.pill-btn {
+  box-shadow: 0 0 20px rgba(118, 185, 0, 0.25), 0 4px 16px rgba(0,0,0,0.5) !important;
+}
+.pill-btn:hover:not(:disabled) {
+  box-shadow: 0 0 36px rgba(200, 168, 50, 0.30), 0 8px 24px rgba(0,0,0,0.5) !important;
+}
+
+/* Ghost button — NVIDIA green outline */
+.pill-ghost {
+  color: #76b900 !important;
+  border-color: rgba(118, 185, 0, 0.45) !important;
+}
+.pill-ghost:hover:not(:disabled) {
+  border-color: rgba(118, 185, 0, 0.80) !important;
+  color: #a3d900 !important;
+  box-shadow: 0 0 18px rgba(118, 185, 0, 0.25), 0 0 40px rgba(118, 185, 0, 0.10) !important;
+}
+
+/* ── 9. NAV LINKS — NVIDIA active state ─────────────────────────── */
+.snav-link.active {
+  background: rgba(118, 185, 0, 0.12) !important;
+  color: #76b900 !important;
+}
+
+/* ── 10. FILTER BUTTONS ─────────────────────────────────────────── */
+.pc-filter-btn.active {
+  background: rgba(118, 185, 0, 0.12) !important;
+  border-color: #76b900 !important;
+  color: #76b900 !important;
+}
+.tab-btn.active {
+  color: #c8a832 !important;
+  border-bottom-color: #c8a832 !important;
+}
+
+/* ── 11. MAX PAIN BANNER — NVIDIA highlight ─────────────────────── */
+.pc-max-pain {
+  background: linear-gradient(135deg, rgba(118, 185, 0, 0.12), rgba(200, 168, 50, 0.08)) !important;
+  border-bottom-color: rgba(118, 185, 0, 0.30) !important;
+  border-top-color: rgba(118, 185, 0, 0.18) !important;
+}
+.pc-mp-val {
+  color: #c8a832 !important;
+  font-size: 1.15rem !important;
+}
+
+/* ── 12. SCROLLBAR — NVIDIA green thumb ─────────────────────────── */
+::-webkit-scrollbar-thumb {
+  background: rgba(118, 185, 0, 0.22) !important;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(118, 185, 0, 0.45) !important;
+}
+
+/* ── 13. LIVE VERIFY BANNER — sharper ───────────────────────────── */
+.live-verify-banner {
+  border-radius: 8px !important;
+}
+
+/* ── 14. HERO TITLE — NVIDIA gradient ──────────────────────────── */
+.grad-text {
+  background: linear-gradient(120deg, #76b900 0%, #a3d900 40%, #c8a832 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+/* ── 15. FUTURES CARD — compact Bloomberg row ───────────────────── */
+.futures-row {
+  padding: 4px 0 !important;
+  border-bottom-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* ── 16. STAT CARDS top accent — NVIDIA green ───────────────────── */
+.stat-card:nth-child(1)::after {
+  background: linear-gradient(90deg, #76b900, #a3d900) !important;
+}
+.stat-card:nth-child(2)::after {
+  background: linear-gradient(90deg, #a3d900, #f1f5f9) !important;
+}
+.stat-card:nth-child(3)::after {
+  background: linear-gradient(90deg, #f1f5f9, #c8a832) !important;
 }
