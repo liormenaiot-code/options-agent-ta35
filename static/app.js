@@ -974,7 +974,6 @@ function renderArbitrage(data) {
 // ── GLOBAL FUTURES — NQ / ES / DAX live prices ──────────────────────
 
 let _futuresData = null;
-let _futuresTimer = null;
 
 async function loadFutures(force = false) {
   const body = document.getElementById('futures-body');
@@ -990,10 +989,6 @@ async function loadFutures(force = false) {
     const data = await resp.json();
     _futuresData = data;
     renderFutures(data);
-
-    // Auto-refresh every 60 s (futures trade around the clock)
-    clearTimeout(_futuresTimer);
-    _futuresTimer = setTimeout(() => loadFutures(true), 60_000);
   } catch (err) {
     body.innerHTML = `<div class="futures-err">⚠ ${esc(err.message)}</div>`;
   }
