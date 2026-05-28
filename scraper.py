@@ -577,11 +577,15 @@ _TASE_HEADERS = {
     "Referer": "https://market.tase.co.il/en/market_data/derivatives/01/putcallchart",
 }
 
-_TASE_EXPIRY_URL  = "https://api.tase.co.il/api/derivatives/fltrputvscallexpdates"
-_TASE_CHART_URL   = "https://api.tase.co.il/api/derivatives/putvscallchartdata"
+_TASE_EXPIRY_URL  = "https://api.tase.co.il/api/derivatives/fltrputvscallexpdates"  # legacy
+_TASE_CHART_URL   = "https://api.tase.co.il/api/derivatives/putvscallchartdata"    # legacy
 
-# מקור רשמי — אתר הבורסה לניירות ערך בתל אביב
-TASE_PUTVSCALL_SOURCE_URL = "https://market.tase.co.il/he/market_data/derivatives/01/major_data/putvscall"
+# ═══════════════════════════════════════════════════════════════════
+# מקור רשמי — Investing.com | נתונים מאומתים ופעילים
+# URL מאומת: ta25-options (השם הישן בכתובת, מציג ת"א 35 אופציות)
+# ═══════════════════════════════════════════════════════════════════
+INVESTING_TA35_OPTIONS_URL = "https://il.investing.com/indices/ta25-options"
+TASE_PUTVSCALL_SOURCE_URL  = INVESTING_TA35_OPTIONS_URL   # backward compat alias
 
 
 def _calc_max_pain(points: list) -> float | None:
@@ -741,58 +745,54 @@ async def _fetch_tase_expiry_dates() -> list[dict]:
 
 async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict:
     """
-    שולף טבלת Put/Call מאתר הבורסה באמצעות Playwright.
-    מחזיר dict עם:
-      - items: רשימת strikes
-      - expiry_dates: תאריכי פקיעה אמיתיים מה-TASE dropdown
-      - actual_expiry: התאריך שנבחר בפועל
-
-    תיקונים ב-v2:
-      1. בוחר "יום מסחר אחרון" (לא קודם)
-      2. אם התאריך לא בדרופדאון → בוחר הראשון הזמין
-      3. call_last_rate / 100 → נקודות אינדקס
-      4. מחזיר גם את תאריכי הפקיעה האמיתיים מה-TASE
+    שולף טבלת אופציות ת"א 35 מ-Investing.com (מקור מאומת).
+    מחליף את הגישה הישנה ל-TASE (שה-DOM שלה השתנה).
     """
+    import re as _re
+
     max_age = 2 if force else 30
     cached = _load_pc_disk(target_iso, max_age_minutes=max_age)
     if cached is not None:
-        # cache returns items list for backward compat
-        return {"items": cached, "expiry_dates": [], "actual_expiry": target_iso}
+        return {"items": cached, "expiry_dates": [], "actual_expiry": target_iso,
+                "source": "Investing.com", "source_url": INVESTING_TA35_OPTIONS_URL}
 
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        return {"items": [], "expiry_dates": [], "actual_expiry": target_iso}
+        return {"items": [], "expiry_dates": [], "actual_expiry": target_iso,
+                "error": "playwright not installed"}
 
-    # המר YYYY-MM-DD → DD/MM/YYYY לזיהוי ב-dropdown
+    # YYYY-MM-DD → DD/MM/YYYY and DD.MM.YYYY (investing.com uses dots)
     try:
-        y, m, d = target_iso.split("-")
-        target_ddmmyyyy = f"{d}/{m}/{y}"
+        y, mo, d = target_iso.split("-")
+        target_ddmm     = f"{d}/{mo}"       # e.g. "29/05"
+        target_dmmyyyy  = f"{d}/{mo}/{y}"   # e.g. "29/05/2026"
+        target_ddmm_dot = f"{d}.{mo}"       # e.g. "29.05"
+        target_dmmyyyy_dot = f"{d}.{mo}.{y}" # e.g. "29.05.2026"
     except Exception:
-        target_ddmmyyyy = ""
+        target_ddmm = target_dmmyyyy = target_ddmm_dot = target_dmmyyyy_dot = ""
 
-    def parse_int(s: str) -> int:
-        s = str(s or "").strip().replace(",", "").replace("—", "").replace("-", "")
-        try:
-            return int(float(s)) if s else 0
-        except Exception:
-            return 0
+    # ── helpers ──────────────────────────────────────────────────────
 
-    def parse_rate(s: str) -> float | None:
-        """שער אחרון מה-TASE — מחלקים ב-100 לקבלת נקודות אינדקס."""
+    def _pi(s: str) -> int:
+        s = str(s or "").strip().replace(",", "").replace("—", "0").replace("-", "0")
+        if s.upper().endswith("K"):
+            try: return int(float(s[:-1]) * 1_000)
+            except: pass
+        try: return int(float(s)) if s else 0
+        except: return 0
+
+    def _pf(s: str):
         s = str(s or "").strip().replace(",", "")
-        if not s or s in ("—", "-", ""):
+        if not s or s in ("—", "-", "N/A", ""):
             return None
-        try:
-            val = float(s)
-            return round(val / 100, 2)   # agorot → index points
-        except Exception:
-            return None
+        try: return round(float(s), 2)
+        except: return None
 
     items: list[dict] = []
-    tase_expiry_dates: list[dict] = []
+    expiry_dates: list[dict] = []
     actual_expiry = target_iso
-    he_days = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
+    captured: list[dict] = []   # from XHR interception
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
@@ -804,156 +804,342 @@ async def _fetch_weekly_playwright(target_iso: str, force: bool = False) -> dict
                     "Chrome/124.0.0.0 Safari/537.36"
                 ),
                 locale="he-IL",
+                extra_http_headers={"Accept-Language": "he-IL,he;q=0.9,en;q=0.8"},
             )
             page = await ctx.new_page()
-            await page.goto(_TASE_BASE_URL, wait_until="domcontentloaded", timeout=45_000)
 
-            # ── המתן ל-dropdown עם options ────────────────────────────
-            await page.wait_for_selector("select#filterOptions", timeout=25_000)
-            for _ in range(40):
-                opt_count = await page.evaluate(
-                    "() => document.querySelector('select#filterOptions')?.options?.length || 0"
-                )
-                if opt_count > 1:
-                    break
-                await page.wait_for_timeout(500)
-
-            # ── בחר "יום מסחר אחרון" (radio button) ──────────────────
-            await page.evaluate("""
-                () => {
-                    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
-                    // מחפש את ה-radio שמכיל "אחרון" בתווית שלו
-                    for (const r of radios) {
-                        const label = r.closest('label') || document.querySelector(`label[for="${r.id}"]`);
-                        const txt = label ? label.innerText : (r.nextSibling ? r.nextSibling.textContent : '');
-                        if (txt && txt.includes('אחרון')) {
-                            r.click();
-                            r.dispatchEvent(new Event('change', {bubbles: true}));
-                            return;
-                        }
-                    }
-                    // fallback: click first radio
-                    if (radios.length > 0) { radios[0].click(); }
-                }
-            """)
-            await page.wait_for_timeout(300)
-
-            # ── קרא את כל תאריכי הפקיעה האמיתיים מה-TASE ────────────
-            raw_options = await page.evaluate("""
-                () => Array.from(document.querySelector('select#filterOptions').options)
-                    .map(o => ({value: o.value, text: o.text.trim()}))
-            """)
-
-            # בנה רשימת תאריכים מהאפשרויות (דלג על "הכל" = value 0)
-            from datetime import date as dt_date
-            for opt in raw_options:
-                if opt["value"] == "0" or not opt["text"]:
-                    continue
-                # text format: "29/05/2026 שבועי" or "28/06/2026 חודשי"
-                parts = opt["text"].split()
-                raw_date = parts[0] if parts else ""
-                exp_type = parts[1] if len(parts) > 1 else "שבועי"
-                if not raw_date or "/" not in raw_date:
-                    continue
+            # ── XHR interception — capture options API response ───────
+            async def _on_resp(resp):
                 try:
-                    dp = raw_date.split("/")
-                    d_obj = dt_date(int(dp[2]), int(dp[1]), int(dp[0]))
-                    tase_expiry_dates.append({
-                        "date":  raw_date,
-                        "label": f"{raw_date} ({he_days.get(d_obj.weekday(), '')}) ({exp_type})",
-                        "type":  "monthly" if "חודשי" in exp_type else "weekly",
-                        "iso":   d_obj.isoformat(),
-                        "dropdown_value": str(opt["value"]),
-                    })
+                    if resp.status != 200:
+                        return
+                    ct = resp.headers.get("content-type", "")
+                    if "json" not in ct:
+                        return
+                    body = await resp.json()
+                    # investing.com returns options in {"data": [...]} or as flat list
+                    lst = None
+                    if isinstance(body, list) and len(body) > 3:
+                        lst = body
+                    elif isinstance(body, dict):
+                        for k in ("data", "options", "result", "rows", "items"):
+                            if isinstance(body.get(k), list) and len(body[k]) > 3:
+                                lst = body[k]; break
+                    if lst and all(isinstance(x, dict) for x in lst[:3]):
+                        keys = " ".join(str(k).lower() for x in lst[:5] for k in x.keys())
+                        if any(kw in keys for kw in ("strike", "bid", "oi", "open_interest", "vol")):
+                            captured.clear()
+                            captured.extend(lst)
                 except Exception:
                     pass
 
-            # ── בחר תאריך בדרופדאון ──────────────────────────────────
-            matched_value = None
-            actual_expiry = target_iso
+            page.on("response", _on_resp)
 
-            # נסה למצוא את התאריך המבוקש
-            for opt in raw_options:
-                if target_ddmmyyyy and target_ddmmyyyy in opt["text"]:
-                    matched_value = str(opt["value"])
-                    break
+            await page.goto(INVESTING_TA35_OPTIONS_URL,
+                            wait_until="domcontentloaded", timeout=50_000)
 
-            # אם לא נמצא → בחר את הראשון הזמין (לא "הכל")
-            if matched_value is None:
-                for opt in raw_options:
-                    if opt["value"] != "0" and opt["text"]:
-                        matched_value = str(opt["value"])
-                        # עדכן actual_expiry לתאריך שנבחר בפועל
-                        if tase_expiry_dates:
-                            actual_expiry = tase_expiry_dates[0]["iso"]
+            # ── Cookie consent ────────────────────────────────────────
+            for txt in ["קבל הכל", "Accept All", "I Accept", "הסכם", "Agree"]:
+                try:
+                    btn = page.get_by_text(txt, exact=False).first
+                    if await btn.is_visible(timeout=1_500):
+                        await btn.click()
+                        await page.wait_for_timeout(800)
                         break
+                except Exception:
+                    pass
 
-            if matched_value is not None:
-                await page.select_option("select#filterOptions", value=matched_value)
-                await page.wait_for_timeout(300)
-
-            # ── לחץ "סנן רשימה" ───────────────────────────────────────
-            filter_btn = page.locator("button", has_text="סנן רשימה").first
-            await filter_btn.click(timeout=10_000)
-
-            # ── המתן לטבלה ────────────────────────────────────────────
-            for _ in range(50):
-                count = await page.evaluate(
+            # ── Wait for the options table ────────────────────────────
+            for _ in range(20):
+                cnt = await page.evaluate(
                     "() => document.querySelectorAll('table tbody tr').length"
                 )
-                if count >= 3:
+                if cnt >= 3:
                     break
                 await page.wait_for_timeout(500)
 
-            # ── גלול לטעינת כל השורות (lazy-load) ────────────────────
-            prev_count = 0
-            for _ in range(40):
-                await page.evaluate("""
-                    () => {
-                        const tbl = document.querySelector('table');
-                        if (tbl) tbl.scrollIntoView(false);
-                        window.scrollTo(0, document.body.scrollHeight);
+            # ── Collect expiry date tabs / buttons ────────────────────
+            expiry_raw = await page.evaluate("""
+                () => {
+                    // Try <select> with dates
+                    for (const sel of document.querySelectorAll('select')) {
+                        const opts = Array.from(sel.options);
+                        if (opts.some(o => /\\d{4}/.test(o.text) || /\\d{2}\\/\\d{2}/.test(o.text))) {
+                            return {type:'select', id:sel.id||sel.name||'', opts: opts.map(o=>({v:o.value,t:o.text.trim()}))};
+                        }
                     }
-                """)
-                await page.wait_for_timeout(500)
-                new_count = await page.evaluate(
-                    "() => document.querySelectorAll('table tbody tr').length"
-                )
-                if new_count == prev_count:
-                    break
-                prev_count = new_count
-
-            # ── סרוק שורות ────────────────────────────────────────────
-            rows_data: list[list[str]] = await page.evaluate("""
-                () => Array.from(document.querySelectorAll('table tbody tr')).map(
-                    row => Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim())
-                )
+                    // Try buttons/tabs with date text
+                    const candidates = Array.from(document.querySelectorAll(
+                        'button,[role="tab"],[class*="expir"],[class*="Expir"],[data-test*="expir"]'
+                    )).filter(el => /\\d{2}[\\/-]\\d{2}/.test(el.textContent||''));
+                    if (candidates.length) {
+                        return {type:'tabs', opts: candidates.map(el=>({t:(el.textContent||'').trim(),cls:el.className}))};
+                    }
+                    return {type:'none', opts:[]};
+                }
             """)
 
-            for cells in rows_data:
-                if len(cells) < 11:
-                    continue
-                # [put_open_pos, put_vol, put_last, put_time, put_name,
-                #  strike,
-                #  call_name, call_time, call_last, call_vol, call_open_pos]
-                strike = parse_int(cells[5])
-                if strike < 500:   # skip synthetic/invalid rows
-                    continue
-                items.append({
-                    "strike":         strike,
-                    "call_last_rate": parse_rate(cells[8]),
-                    "call_vol":       parse_int(cells[9]),
-                    "call_open_pos":  parse_int(cells[10]),
-                    "put_last_rate":  parse_rate(cells[2]),
-                    "put_vol":        parse_int(cells[1]),
-                    "put_open_pos":   parse_int(cells[0]),
-                })
+            from datetime import date as _dt
+            he_days = {0:"שני",1:"שלישי",2:"רביעי",3:"חמישי",4:"שישי",6:"ראשון"}
+
+            for opt in expiry_raw.get("opts", []):
+                txt = opt.get("t", "")
+                # extract date-like substring DD/MM/YYYY, DD.MM.YYYY, or DD-MM-YYYY
+                m = _re.search(r"(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})", txt)
+                if m:
+                    p1, p2, p3 = m.groups()
+                    yr = int(p3) if len(p3) == 4 else 2000 + int(p3)
+                    # assume DD/MM/YYYY for Israeli site
+                    try:
+                        d_obj = _dt(yr, int(p2), int(p1))
+                        iso = d_obj.isoformat()
+                        lbl_type = "חודשי" if d_obj.weekday() == 4 and d_obj.day >= 22 else "שבועי"
+                        expiry_dates.append({
+                            "date":  d_obj.strftime("%d/%m/%Y"),
+                            "label": f"{d_obj.strftime('%d/%m/%Y')} ({he_days.get(d_obj.weekday(),'')}) ({lbl_type})",
+                            "type":  lbl_type,
+                            "iso":   iso,
+                            "raw_value": opt.get("v", ""),
+                        })
+                    except Exception:
+                        pass
+
+            # ── Select requested expiry ───────────────────────────────
+            if target_ddmm and expiry_raw.get("type") == "select" and expiry_raw.get("id"):
+                sel_id = expiry_raw["id"]
+                for opt in expiry_raw.get("opts", []):
+                    t = opt.get("t", "")
+                    # match slash or dot formats (investing.com uses DD.MM.YYYY)
+                    if (target_ddmm in t or target_dmmyyyy in t
+                            or target_ddmm_dot in t or target_dmmyyyy_dot in t):
+                        try:
+                            await page.select_option(f"#{sel_id}", value=opt["v"])
+                            await page.wait_for_timeout(2_000)
+                        except Exception:
+                            pass
+                        break
+
+            elif target_ddmm and expiry_raw.get("type") == "tabs":
+                try:
+                    tab = page.get_by_text(target_ddmm, exact=False).first
+                    if await tab.is_visible(timeout=2_000):
+                        await tab.click()
+                        await page.wait_for_timeout(2_000)
+                except Exception:
+                    pass
+
+            # ── Select "הכל" (all strikes) in selectStrike ──────────
+            # So we get all strikes, not just "ליד הכסף" (near-the-money)
+            try:
+                strike_opts = await page.evaluate("""
+                    () => {
+                        const s = document.getElementById('selectStrike');
+                        if (!s) return [];
+                        return Array.from(s.options).map(o => ({v: o.value, t: o.text.trim()}));
+                    }
+                """)
+                # Find "הכל" option, or fallback to the option with lowest value (usually "all")
+                kol_val = None
+                for sopt in strike_opts:
+                    t = sopt.get("t", "")
+                    if "הכל" in t or "all" in t.lower() or "כולם" in t:
+                        kol_val = sopt["v"]
+                        break
+                if kol_val is None and strike_opts:
+                    # Last option is often "all strikes" on investing.com
+                    kol_val = strike_opts[-1]["v"]
+                if kol_val is not None:
+                    await page.select_option("#selectStrike", value=str(kol_val))
+                    await page.wait_for_timeout(2_500)
+            except Exception:
+                pass
+
+            # ── Scroll table to trigger lazy-load ─────────────────────
+            prev = 0
+            for _ in range(30):
+                await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(400)
+                cnt = await page.evaluate(
+                    "() => document.querySelectorAll('table tbody tr').length"
+                )
+                if cnt == prev:
+                    break
+                prev = cnt
+
+            # ── Use captured XHR data if available ───────────────────
+            if captured:
+                items = _parse_investing_api(captured)
+            else:
+                # DOM fallback
+                dom = await page.evaluate("""
+                    () => {
+                        const rows = [];
+                        let tbl = null;
+                        // Search for the options table — look for Hebrew keywords or common option table markers
+                        for (const t of document.querySelectorAll('table')) {
+                            const txt = t.innerText || '';
+                            if (txt.includes('מחיר מימוש') || txt.includes('Strike') ||
+                                txt.includes('מימוש') || txt.includes('OI') ||
+                                txt.includes('נפח') || txt.includes('ביקוש')) {
+                                tbl = t; break;
+                            }
+                        }
+                        // Fallback: first table with enough rows
+                        if (!tbl) {
+                            for (const t of document.querySelectorAll('table')) {
+                                if (t.querySelectorAll('tbody tr').length >= 3) {
+                                    tbl = t; break;
+                                }
+                            }
+                        }
+                        if (!tbl) return {headers:[], rows:[]};
+                        const headers = Array.from(tbl.querySelectorAll('thead th,thead td'))
+                                            .map(h => h.innerText.trim());
+                        for (const row of tbl.querySelectorAll('tbody tr')) {
+                            const cells = Array.from(row.querySelectorAll('td'))
+                                              .map(td => td.innerText.trim());
+                            if (cells.length >= 5) rows.push(cells);
+                        }
+                        return {headers, rows};
+                    }
+                """)
+                items = _parse_investing_dom(dom.get("rows", []))
 
         finally:
             await browser.close()
 
-    _save_pc_disk(actual_expiry, items)
-    return {"items": items, "expiry_dates": tase_expiry_dates, "actual_expiry": actual_expiry}
+    if items:
+        actual_expiry = target_iso
+        _save_pc_disk(target_iso, items)
+
+    return {
+        "items":        items,
+        "expiry_dates": expiry_dates,
+        "actual_expiry": actual_expiry,
+        "source":       "Investing.com",
+        "source_url":   INVESTING_TA35_OPTIONS_URL,
+    }
+
+
+def _parse_investing_api(raw: list) -> list[dict]:
+    """Parses JSON list intercepted from Investing.com options API."""
+    items = []
+    def _pf(d, *keys):
+        for k in keys:
+            v = d.get(k)
+            if v is not None and str(v).strip() not in ("", "-", "N/A"):
+                try: return round(float(str(v).replace(",","")), 2)
+                except: pass
+        return None
+    def _pi(d, *keys):
+        v = _pf(d, *keys)
+        return int(v) if v is not None else 0
+
+    for item in raw:
+        if not isinstance(item, dict): continue
+        # Try known field names investing.com uses
+        strike = _pf(item,
+            "strike", "Strike", "strikeprice", "StrikePrice",
+            "exercise_price", "ExercisePrice", "strike_price")
+        if not strike or strike < 100: continue
+        items.append({
+            "strike":        int(strike),
+            "call_last_rate":_pf(item,  "call_last","callLast","c_last","callPrice","call_price"),
+            "call_vol":      _pi(item,  "call_volume","callVolume","c_vol","callVol"),
+            "call_open_pos": _pi(item,  "call_oi","callOI","call_open_interest","callOpenInterest","c_oi"),
+            "put_last_rate": _pf(item,  "put_last","putLast","p_last","putPrice","put_price"),
+            "put_vol":       _pi(item,  "put_volume","putVolume","p_vol","putVol"),
+            "put_open_pos":  _pi(item,  "put_oi","putOI","put_open_interest","putOpenInterest","p_oi"),
+        })
+    return sorted(items, key=lambda x: x["strike"])
+
+
+def _parse_investing_dom(rows: list) -> list[dict]:
+    """
+    Parses DOM rows from investing.com ta25-options table.
+
+    Verified layout (8 columns, debug confirmed 28-May-2026):
+      index:  0           1       2       3       4      5              6          7
+              Call_Last  Call_Chg Call_Bid Call_Ask Call_Vol  Strike   Put_Last  Put_Chg
+
+    Example first row: ['1,440', '1,79', '1,380', '1,500', '74', '4,460', '170', '5']
+
+    Note: investing.com ta25 table has NO open-interest (OI) column — only Last, Chg, Bid, Ask, Vol.
+    """
+    import re as _re
+
+    def _pf(s):
+        s = str(s or "").strip().replace(",", "").replace("—", "").replace("—", "")
+        if not s or s in ("-", "N/A", ""): return None
+        try: return round(float(s), 2)
+        except: return None
+
+    def _pi(s):
+        sv = str(s or "").strip()
+        if sv.upper().endswith("K"):
+            try: return int(float(sv[:-1]) * 1_000)
+            except: pass
+        v = _pf(s)
+        return int(v) if v is not None else 0
+
+    items = []
+    for cells in rows:
+        n = len(cells)
+        if n < 5:
+            continue
+
+        # Find the strike column: integer in TA-35 range 2500–8000
+        strike_idx = None
+        for i, c in enumerate(cells):
+            clean = c.replace(",", "").strip()
+            m = _re.match(r"^(\d{3,5})(\.\d+)?$", clean)
+            if m:
+                v = float(m.group(1))
+                if 2500 <= v <= 8000:
+                    strike_idx = i
+                    break
+
+        if strike_idx is None:
+            continue
+
+        strike = int(float(cells[strike_idx].replace(",", "")))
+        left   = cells[:strike_idx]   # Call columns (to the left of strike)
+        right  = cells[strike_idx + 1:]  # Put columns (to the right of strike)
+
+        # Expected layout:
+        #   left  (5 cols): [Call_Last, Call_Chg, Call_Bid, Call_Ask, Call_Vol]
+        #   right (2 cols): [Put_Last,  Put_Chg]
+        #
+        # Guard: if layout differs, fall back gracefully
+        call_last = _pf(left[0]) if len(left) >= 1 else None
+        call_vol  = _pi(left[4]) if len(left) >= 5 else (_pi(left[-1]) if left else 0)
+        put_last  = _pf(right[0]) if len(right) >= 1 else None
+        put_vol   = 0  # not available in this table layout
+
+        items.append({
+            "strike":        strike,
+            "call_last_rate": call_last,
+            "call_vol":       call_vol,
+            "call_open_pos":  0,      # OI not in ta25-options table
+            "put_last_rate":  put_last,
+            "put_vol":        put_vol,
+            "put_open_pos":   0,      # OI not in ta25-options table
+        })
+
+    # ── Merge duplicate strikes ────────────────────────────────────────
+    # investing.com sometimes shows separate rows per side at the same strike
+    merged: dict[int, dict] = {}
+    for item in items:
+        k = item["strike"]
+        if k not in merged:
+            merged[k] = item
+        else:
+            ex = merged[k]
+            for field in ("call_last_rate", "call_vol", "put_last_rate", "put_vol"):
+                if not ex.get(field) and item.get(field):
+                    ex[field] = item[field]
+
+    return sorted(merged.values(), key=lambda x: x["strike"])
 
 
 async def _fetch_tase_putvscall(expiry_date: str | None = None, force: bool = False) -> dict:
@@ -1004,13 +1190,30 @@ async def _fetch_tase_putvscall(expiry_date: str | None = None, force: bool = Fa
         # ── Max Pain calculation ───────────────────────────────────────
         items_list = result["items"]
         if items_list:
-            # Build compact [strike, call_oi, put_oi] list for _calc_max_pain
-            mp_points = [
-                [it["strike"], it.get("call_open_pos", 0), it.get("put_open_pos", 0)]
+            # Prefer OI; fall back to volume when OI not available (investing.com DOM table)
+            has_oi = any(
+                (it.get("call_open_pos", 0) or 0) + (it.get("put_open_pos", 0) or 0) > 0
                 for it in items_list
-                if it.get("strike", 0) > 0
-            ]
-            result["max_pain"] = _calc_max_pain(mp_points)
+            )
+            if has_oi:
+                mp_points = [
+                    [it["strike"], it.get("call_open_pos", 0), it.get("put_open_pos", 0)]
+                    for it in items_list if it.get("strike", 0) > 0
+                ]
+            else:
+                # Use volume as proxy for OI when OI data is unavailable
+                mp_points = [
+                    [it["strike"], it.get("call_vol", 0) or 0, it.get("put_vol", 0) or 0]
+                    for it in items_list if it.get("strike", 0) > 0
+                ]
+
+            # Only compute max pain if BOTH sides have meaningful data
+            has_call_data = any(p[1] > 0 for p in mp_points)
+            has_put_data  = any(p[2] > 0 for p in mp_points)
+            if has_call_data and has_put_data:
+                result["max_pain"] = _calc_max_pain(mp_points)
+            else:
+                result["max_pain"] = None  # not enough bilateral data
 
     except Exception as exc:
         result["error"] = str(exc)

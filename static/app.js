@@ -510,6 +510,16 @@ function esc(str) {
 
 // ── PUT/CALL TABLE ─────────────────────────────────────────────────
 let _pcLoading = false;
+let _pcData    = null;   // last fetched data for re-filtering
+let _pcFilter  = 'all'; // 'all' | 'ntm' | 'itm-call' | 'itm-put' | 'otm'
+
+function setPcFilter(filter) {
+  _pcFilter = filter;
+  document.querySelectorAll('.pc-filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.filter === filter)
+  );
+  if (_pcData) renderPutCall(_pcData);   // re-render with new filter
+}
 
 async function loadPutCall(expiry = null, force = false) {
   if (_pcLoading) return;
@@ -529,6 +539,7 @@ async function loadPutCall(expiry = null, force = false) {
     const resp = await fetch(`/api/putvscall?${params.toString()}`);
     if (!resp.ok) throw new Error(`שגיאת שרת: ${resp.status}`);
     const data = await resp.json();
+    _pcData = data;
     renderPutCall(data);
   } catch (err) {
     if (body) body.innerHTML = `<div class="pc-error">⚠ שגיאה בטעינת נתוני Put/Call: ${esc(err.message)}</div>`;
@@ -570,19 +581,19 @@ function renderPutCall(data) {
   // Max Pain
   const maxPain = data.max_pain;
 
-  // Summary totals
-  let totalCallOI = 0, totalPutOI = 0;
+  // Summary totals — use volume (investing.com doesn't expose OI in this table)
+  let totalCallVol = 0, totalPutVol = 0;
   items.forEach(r => {
-    totalCallOI += r.call_open_pos || 0;
-    totalPutOI  += r.put_open_pos  || 0;
+    totalCallVol += r.call_vol || 0;
+    totalPutVol  += r.put_vol  || 0;
   });
-  const totalOI = totalCallOI + totalPutOI || 1;
-  const pcRatio = totalPutOI > 0 ? (totalCallOI / totalPutOI).toFixed(2) : '—';
-  const callPct = Math.round(totalCallOI / totalOI * 100);
-  const putPct  = 100 - callPct;
+  const totalVol = totalCallVol + totalPutVol || 1;
+  const pcRatio  = totalPutVol > 0 ? (totalCallVol / totalPutVol).toFixed(2) : '—';
+  const callPct  = Math.round(totalCallVol / totalVol * 100);
+  const putPct   = 100 - callPct;
 
-  // Max OI for bar scaling
-  const maxOI = Math.max(...items.map(r => Math.max(r.call_open_pos || 0, r.put_open_pos || 0)), 1);
+  // Max volume for bar scaling
+  const maxOI = Math.max(...items.map(r => Math.max(r.call_vol || 0, r.put_vol || 0)), 1);
 
   // ATM — closest strike to current TA-35 price
   const currentPrice = parseFloat(document.getElementById('stat-price')?.textContent?.replace(/,/g, '') || '0');
@@ -601,38 +612,53 @@ function renderPutCall(data) {
     ? `<div class="pc-range-note">⚠ מחיר המדד הנוכחי (${currentPrice.toLocaleString('he-IL')}) גבוה ממחיר המימוש המקסימלי המפורסם לתאריך זה (${maxStrike.toLocaleString('he-IL')}). הבורסה אינה מפרסמת סדרות מימוש חדשות לאמצע תקופה.</div>`
     : '';
 
-  const sorted = [...items].sort((a, b) => a.strike - b.strike);
+  // ── Apply filter (mirrors Investing.com filters) ──────────────────
+  let filteredItems = [...items];
+  if (currentPrice > 0) {
+    const ntmBand = currentPrice * 0.05;   // ±5% = "near the money"
+    if (_pcFilter === 'ntm') {
+      filteredItems = items.filter(r => Math.abs(r.strike - currentPrice) <= ntmBand);
+    } else if (_pcFilter === 'itm-call') {
+      // Calls ITM: strike < current price
+      filteredItems = items.filter(r => r.strike < currentPrice);
+    } else if (_pcFilter === 'itm-put') {
+      // Puts ITM: strike > current price
+      filteredItems = items.filter(r => r.strike > currentPrice);
+    } else if (_pcFilter === 'otm') {
+      // OTM: beyond ±5%
+      filteredItems = items.filter(r => Math.abs(r.strike - currentPrice) > ntmBand);
+    }
+  }
+
+  const sorted = [...filteredItems].sort((a, b) => a.strike - b.strike);
 
   const rows = sorted.map(r => {
     const isAtm    = atmStrike && r.strike === atmStrike;
     const atmClass = isAtm ? ' class="pc-atm"' : '';
     const strike   = r.strike?.toLocaleString('he-IL') || '—';
 
-    const callOI   = r.call_open_pos != null ? r.call_open_pos.toLocaleString('he-IL') : '—';
-    const callVol  = r.call_vol      != null ? r.call_vol.toLocaleString('he-IL')      : '—';
-    const callLast = r.call_last_rate != null ? Math.round(r.call_last_rate).toLocaleString('he-IL') : '—';
-    const putOI    = r.put_open_pos  != null ? r.put_open_pos.toLocaleString('he-IL')  : '—';
-    const putVol   = r.put_vol       != null ? r.put_vol.toLocaleString('he-IL')       : '—';
-    const putLast  = r.put_last_rate  != null ? Math.round(r.put_last_rate).toLocaleString('he-IL') : '—';
+    const callVol  = (r.call_vol  != null && r.call_vol  > 0) ? r.call_vol.toLocaleString('he-IL')  : '—';
+    const callLast = r.call_last_rate != null ? r.call_last_rate.toLocaleString('he-IL') : '—';
+    const putLast  = r.put_last_rate  != null ? r.put_last_rate.toLocaleString('he-IL')  : '—';
+    const putVol   = (r.put_vol   != null && r.put_vol   > 0) ? r.put_vol.toLocaleString('he-IL')   : '—';
 
-    const callBarW = Math.round((r.call_open_pos || 0) / maxOI * 60);
-    const putBarW  = Math.round((r.put_open_pos  || 0) / maxOI * 60);
+    // Volume bars (investing.com doesn't expose OI for this table)
+    const callBarW = Math.round((r.call_vol || 0) / maxOI * 60);
+    const putBarW  = Math.round((r.put_vol  || 0) / maxOI * 60);
 
     return `<tr${atmClass}>
       <td class="pc-td-call">
         <div class="pc-oi-bar-wrap">
-          <span>${callOI}</span>
+          <span>${callVol}</span>
           <div class="pc-oi-bar call" style="width:${callBarW}px"></div>
         </div>
       </td>
-      <td class="pc-td-call" style="font-size:0.8rem">${callVol}</td>
-      <td class="pc-td-call" style="font-size:0.8rem">${callLast}</td>
+      <td class="pc-td-call" style="font-size:0.88rem;font-weight:600">${callLast}</td>
       <td class="pc-td-mid">${strike}${isAtm ? ' ◉' : ''}</td>
-      <td class="pc-td-put" style="font-size:0.8rem">${putLast}</td>
-      <td class="pc-td-put" style="font-size:0.8rem">${putVol}</td>
+      <td class="pc-td-put" style="font-size:0.88rem;font-weight:600">${putLast}</td>
       <td class="pc-td-put">
         <div class="pc-oi-bar-wrap" style="flex-direction:row-reverse">
-          <span>${putOI}</span>
+          <span>${putVol}</span>
           <div class="pc-oi-bar put" style="width:${putBarW}px"></div>
         </div>
       </td>
@@ -660,16 +686,16 @@ function renderPutCall(data) {
     ${aboveRangeNote}
     <div class="pc-summary">
       <div class="pc-sum-item">
-        <span class="pc-sum-val call-col">${totalCallOI.toLocaleString('he-IL')}</span>
-        <span class="pc-sum-label">סה"כ OI — Call</span>
+        <span class="pc-sum-val call-col">${totalCallVol.toLocaleString('he-IL')}</span>
+        <span class="pc-sum-label">סה"כ מחזור — Call</span>
       </div>
       <div class="pc-sum-item">
         <span class="pc-sum-val ratio-col">${pcRatio}</span>
         <span class="pc-sum-label">יחס Call/Put</span>
       </div>
       <div class="pc-sum-item">
-        <span class="pc-sum-val put-col">${totalPutOI.toLocaleString('he-IL')}</span>
-        <span class="pc-sum-label">סה"כ OI — Put</span>
+        <span class="pc-sum-val put-col">${totalPutVol.toLocaleString('he-IL')}</span>
+        <span class="pc-sum-label">סה"כ מחזור — Put</span>
       </div>
     </div>
     <div class="pc-ratio-bar-wrap">
@@ -680,18 +706,16 @@ function renderPutCall(data) {
       <table class="pc-table">
         <thead>
           <tr>
-            <th class="pc-th-call" colspan="3">📈 Call</th>
+            <th class="pc-th-call" colspan="2">📈 Call</th>
             <th class="pc-th-mid">מחיר מימוש</th>
-            <th class="pc-th-put" colspan="3">📉 Put</th>
+            <th class="pc-th-put" colspan="2">📉 Put</th>
           </tr>
           <tr>
-            <th class="pc-th-call">פוזיציות פתוחות</th>
-            <th class="pc-th-call">מחזור</th>
+            <th class="pc-th-call">נפח מחזור</th>
             <th class="pc-th-call">שער אחרון</th>
             <th class="pc-th-mid">Strike</th>
             <th class="pc-th-put">שער אחרון</th>
-            <th class="pc-th-put">מחזור</th>
-            <th class="pc-th-put">פוזיציות פתוחות</th>
+            <th class="pc-th-put">נפח מחזור</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

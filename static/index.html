@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=41" />
+  <link rel="stylesheet" href="/static/style.css?v=43" />
 </head>
 <body>
 
@@ -284,7 +284,7 @@
     <!-- BREAKING NEWS — 3 items -->
     <div id="breaking-news-block" style="display:none"></div>
 
-    <!-- PUT/CALL OPEN INTEREST — live from TASE -->
+    <!-- PUT/CALL OPEN INTEREST — Investing.com verified -->
     <section class="pc-section" id="pc-section">
       <div class="pc-header">
         <span class="pc-dot-call"></span>
@@ -298,8 +298,23 @@
         </button>
         <span class="pc-meta" id="pc-trade-date"></span>
       </div>
+
+      <!-- Filter bar — matches Investing.com filters -->
+      <div class="pc-filter-bar">
+        <span class="pc-filter-label">סינון:</span>
+        <button class="pc-filter-btn active" data-filter="all"     onclick="setPcFilter('all')">הכל</button>
+        <button class="pc-filter-btn"        data-filter="ntm"     onclick="setPcFilter('ntm')">ליד הכסף</button>
+        <button class="pc-filter-btn"        data-filter="itm-call"onclick="setPcFilter('itm-call')">Call בכסף</button>
+        <button class="pc-filter-btn"        data-filter="itm-put" onclick="setPcFilter('itm-put')">Put בכסף</button>
+        <button class="pc-filter-btn"        data-filter="otm"     onclick="setPcFilter('otm')">מחוץ לכסף</button>
+        <span class="pc-src-badge">
+          <span class="pc-src-dot"></span>
+          מקור מאומת: <a href="https://il.investing.com/indices/ta25-options" target="_blank" rel="noopener" class="pc-src-link">Investing.com</a>
+        </span>
+      </div>
+
       <div class="pc-body" id="pc-body">
-        <div class="pc-loading">טוען פוזיציות פתוחות מהבורסה...</div>
+        <div class="pc-loading">טוען פוזיציות פתוחות...</div>
       </div>
     </section>
 
@@ -377,6 +392,6 @@
   </main>
 
   <script src="/static/bg-shader.js"></script>
-  <script src="/static/app.js?v=41"></script>
+  <script src="/static/app.js?v=43"></script>
 </body>
 </html>

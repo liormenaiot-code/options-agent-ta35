@@ -1387,6 +1387,71 @@ body::after {
   animation: spin 0.8s linear infinite;
 }
 
+/* ── PC FILTER BAR ──────────────────────────────── */
+.pc-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  flex-wrap: wrap;
+  background: rgba(255,255,255,0.015);
+}
+
+.pc-filter-label {
+  font-size: 0.72rem;
+  color: var(--text-xs);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.pc-filter-btn {
+  padding: 3px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.73rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.pc-filter-btn:hover {
+  color: var(--cream);
+  border-color: rgba(255,255,255,0.3);
+}
+.pc-filter-btn.active {
+  background: rgba(34,211,238,0.12);
+  border-color: var(--cyan);
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+/* Investing.com verified source badge */
+.pc-src-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  font-size: 0.68rem;
+  color: var(--text-xs);
+}
+.pc-src-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 5px #22c55e88;
+  flex-shrink: 0;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+.pc-src-link {
+  color: var(--cyan);
+  text-decoration: none;
+  font-weight: 500;
+}
+.pc-src-link:hover { text-decoration: underline; }
+
 .pc-body {
   padding: 0;
   overflow-x: auto;
