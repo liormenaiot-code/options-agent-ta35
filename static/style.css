@@ -2122,9 +2122,11 @@ body::after {
   white-space: nowrap;
 }
 
-.src-ynet { background: var(--tan-dim);   color: var(--cyan);   }
-.src-eco  { background: var(--sage-dim);  color: var(--sage);  }
-.src-calc { background: var(--brown-dim); color: var(--cream); }
+.src-ynet    { background: var(--tan-dim);              color: var(--cyan);   }
+.src-eco     { background: var(--sage-dim);             color: var(--sage);   }
+.src-calc    { background: var(--brown-dim);            color: var(--cream);  }
+.src-finnhub { background: rgba(74,222,128,0.10);       color: var(--green);  }
+.src-globes  { background: rgba(251,146,60,0.12);       color: #fb923c;       }
 
 .nt-hl-cell a {
   color: var(--text);

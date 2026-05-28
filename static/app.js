@@ -180,40 +180,52 @@ function showVerifyBanner() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  // Build source chips based on what we have
   const chips = [];
 
   // Yahoo Finance — stocks
   if (_stocksData) {
     const ok    = _stocksData.verified_count ?? _stocksData.total_count ?? 0;
     const total = _stocksData.total_count ?? 0;
-    chips.push(`
-      <span class="lvb-chip">
-        <span class="lvb-dot"></span>
-        <a href="https://finance.yahoo.com/" target="_blank" rel="noopener">Yahoo Finance</a>
-        <span class="lvb-count">${ok}/${total} מניות</span>
-      </span>`);
+    chips.push(`<span class="lvb-chip">
+      <span class="lvb-dot"></span>
+      <a href="https://finance.yahoo.com/" target="_blank" rel="noopener">Yahoo Finance</a>
+      <span class="lvb-count">${ok}/${total} מניות</span>
+    </span>`);
   }
 
   // Globes — arbitrage
-  if (_arbData) {
-    chips.push(`
-      <span class="lvb-chip">
-        <span class="lvb-dot"></span>
-        <a href="https://www.globes.co.il/portal/arbitrage/" target="_blank" rel="noopener">גלובס ארביטראז'</a>
-      </span>`);
+  if (_arbData?.stocks?.length) {
+    chips.push(`<span class="lvb-chip">
+      <span class="lvb-dot"></span>
+      <a href="https://www.globes.co.il/portal/arbitrage/" target="_blank" rel="noopener">גלובס ארביטראז'</a>
+      <span class="lvb-count">${_arbData.stocks.length} מניות</span>
+    </span>`);
   }
 
-  // TASE — Put/Call (always present after load)
-  chips.push(`
-    <span class="lvb-chip">
+  // Investing.com — Put/Call options
+  chips.push(`<span class="lvb-chip">
+    <span class="lvb-dot"></span>
+    <a href="https://il.investing.com/indices/ta25-options" target="_blank" rel="noopener">Investing.com — Put/Call</a>
+  </span>`);
+
+  // Yahoo Finance — Futures
+  if (_futuresData?.futures?.length) {
+    const ok = _futuresData.futures.filter(f => f.price != null).length;
+    chips.push(`<span class="lvb-chip">
       <span class="lvb-dot"></span>
-      <a href="https://market.tase.co.il/he/market_data/derivatives/01/major_data/putvscall" target="_blank" rel="noopener">בורסת ת"א — Put/Call</a>
+      <a href="https://finance.yahoo.com/" target="_blank" rel="noopener">Yahoo Finance — חוזים</a>
+      <span class="lvb-count">${ok}/${_futuresData.futures.length}</span>
     </span>`);
+  }
+
+  const allReady = (_stocksData && _arbData && _futuresData);
+  const title = allReady
+    ? 'כל הנתונים מאומתים בלייב ✓'
+    : 'נתונים חלקיים — חלק מהמקורות בטעינה';
 
   banner.innerHTML = `
-    <span class="lvb-icon">✅</span>
-    <span class="lvb-title">כל הנתונים מאומתים בלייב — 100%</span>
+    <span class="lvb-icon">${allReady ? '✅' : '⏳'}</span>
+    <span class="lvb-title">${title}</span>
     <span class="lvb-sources">${chips.join('')}</span>
     <span class="lvb-time">עודכן: ${timeStr}</span>`;
 
@@ -258,18 +270,20 @@ function renderAll(data) {
 function renderMarket(market) {
   if (!market?.market_data) return;
   const md = market.market_data;
+  if (md.price == null) return;
   document.getElementById('hdr-price').textContent = fmtNum(md.price, 2);
   document.getElementById('stat-price').textContent = fmtNum(md.price, 2);
-  const sign = md.change_pct >= 0 ? '+' : '';
-  const changeTxt = `${sign}${md.change_pct.toFixed(2)}%`;
-  const cls = md.change_pct > 0.05 ? 'up' : md.change_pct < -0.05 ? 'down' : 'flat';
+  const chgPct = md.change_pct ?? 0;
+  const sign = chgPct >= 0 ? '+' : '';
+  const changeTxt = `${sign}${chgPct.toFixed(2)}%`;
+  const cls = chgPct > 0.05 ? 'up' : chgPct < -0.05 ? 'down' : 'flat';
   const hdrChange = document.getElementById('hdr-change');
   hdrChange.textContent = changeTxt;
   hdrChange.className = 'ticker-change ' + cls;
   document.getElementById('stat-change').textContent = changeTxt;
   document.getElementById('stat-change').className = 'stat-sub ' + cls;
   document.getElementById('stat-price').className =
-    'stat-num ' + (md.change_pct > 0.05 ? 'green' : md.change_pct < -0.05 ? 'red' : 'cyan');
+    'stat-num ' + (chgPct > 0.05 ? 'green' : chgPct < -0.05 ? 'red' : 'cyan');
 }
 
 // ── VTA35 ───────────────────────────────────────────────────────────
@@ -471,12 +485,16 @@ function getSrcClass(s='') {
   s = s.toLowerCase();
   if (s.includes('כלכליסט')||s.includes('calcalist')) return 'src-calc';
   if (s.includes('כלכלה')||s.includes('economy'))     return 'src-eco';
+  if (s.includes('finnhub'))                          return 'src-finnhub';
+  if (s.includes('גלובס')||s.includes('globes'))      return 'src-globes';
   return 'src-ynet';
 }
 function getSrcLabel(s='') {
   s = s.toLowerCase();
   if (s.includes('כלכליסט')||s.includes('calcalist')) return 'CALCALIST';
   if (s.includes('כלכלה')||s.includes('economy'))     return 'YNET ECO';
+  if (s.includes('finnhub'))                          return 'FINNHUB';
+  if (s.includes('גלובס')||s.includes('globes'))      return 'GLOBES';
   return 'YNET';
 }
 function getImpactBadge(impact) {
@@ -779,7 +797,8 @@ async function loadStocks(force = false) {
       upd.textContent = `עוד׳ ${d.toLocaleTimeString('he-IL', { hour:'2-digit', minute:'2-digit' })}`;
     }
   } catch (err) {
-    body.innerHTML = `<div class="stocks-loading">⚠ ${esc(err.message)}</div>`;
+    if (bodyAll)  bodyAll.innerHTML  = `<div class="stocks-loading">⚠ ${esc(err.message)}</div>`;
+    if (bodyDual) bodyDual.innerHTML = '';
   }
 }
 
@@ -942,7 +961,7 @@ function renderArbitrage(data) {
     return;
   }
 
-  // Summary bar
+  // ── Summary bar ───────────────────────────────────────────────────
   const cur  = _arbSumVal(sum.current_impact_pct);
   const ini  = _arbSumVal(sum.initial_impact_pct);
   const ta35 = _arbSumVal(sum.ta35_actual_pct);
@@ -967,7 +986,39 @@ function renderArbitrage(data) {
     ${rate}
   </div>`;
 
-  body.innerHTML = summaryHtml;
+  // ── Stocks table ──────────────────────────────────────────────────
+  let tableHtml = '';
+  if (stocks.length) {
+    const rows = stocks.map((s, i) => {
+      const usChg  = _arbChip(s.us_change_pct);
+      const taChg  = _arbChip(s.ta_change_pct);
+      const arbCur = _arbChip(s.arb_pct_current);
+      const ticker = s.us_ticker
+        ? `<span class="arb-ticker">${esc(s.us_ticker)}</span>` : '';
+      return `<tr class="arb-row">
+        <td class="arb-num">${i + 1}</td>
+        <td class="arb-name">${esc(s.name_he || '')}${ticker ? ' ' + ticker : ''}</td>
+        <td class="arb-pct">${arbCur}</td>
+        <td class="arb-pct">${taChg}</td>
+        <td class="arb-pct">${usChg}</td>
+      </tr>`;
+    }).join('');
+
+    tableHtml = `<div class="arb-table-wrap">
+      <table class="arb-table">
+        <thead><tr>
+          <th class="arb-th-num">#</th>
+          <th>מניה</th>
+          <th class="arb-th-pct">פער ארביטראז'</th>
+          <th class="arb-th-pct">ת"א שינוי%</th>
+          <th class="arb-th-pct">US שינוי%</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  body.innerHTML = summaryHtml + tableHtml;
 }
 
 
@@ -981,6 +1032,7 @@ async function loadFutures(force = false) {
 
   if (!force && _futuresData) { renderFutures(_futuresData); return; }
 
+  body.innerHTML = '<div class="futures-loading">⏳ טוען...</div>';
   try {
     const params = new URLSearchParams();
     if (force) params.set('force', 'true');
@@ -989,6 +1041,7 @@ async function loadFutures(force = false) {
     const data = await resp.json();
     _futuresData = data;
     renderFutures(data);
+    showVerifyBanner();
   } catch (err) {
     body.innerHTML = `<div class="futures-err">⚠ ${esc(err.message)}</div>`;
   }
