@@ -814,29 +814,21 @@ body::after {
 /* ═══════════════════════════════════════════════
    SECTION NAV
    ═══════════════════════════════════════════════ */
+/* Section nav — lives inside #site-header, centered between logo and buttons */
 .section-nav {
-  position: sticky;
-  top: 64px;
-  z-index: 90;
   display: flex;
-  flex-direction: row-reverse;   /* RTL: links flow right → left */
-  gap: 4px;
-  padding: 0 36px;
-  height: 44px;
+  flex-direction: row;          /* RTL page: first item appears rightmost */
+  gap: 2px;
   align-items: center;
-  background: rgba(9, 9, 11, 0.80);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  margin-bottom: 0;
-  /* negative margin so it sits flush before main content */
+  flex: 1;                      /* fill available header space */
+  justify-content: center;      /* center links horizontally */
 }
 
 .snav-link {
-  padding: 5px 16px;
+  padding: 5px 14px;
   border-radius: 20px;
   color: var(--text-dim);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 500;
   font-family: inherit;
   text-decoration: none;
@@ -856,10 +848,10 @@ body::after {
   font-weight: 700;
 }
 
-/* Scroll offset so sticky headers don't cover the section */
+/* Scroll offset — only the header (64px) since there's no second bar */
 #home-section, #pc-section, #stats-section,
 #stocks-section, #news-section {
-  scroll-margin-top: 116px;   /* 64px header + 44px nav + 8px buffer */
+  scroll-margin-top: 76px;
 }
 
 /* ═══════════════════════════════════════════════

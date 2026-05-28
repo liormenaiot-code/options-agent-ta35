@@ -34,7 +34,7 @@ function _initSectionNav() {
       if (entry.isIntersecting) setActive(entry.target.id);
     });
   }, {
-    rootMargin: '-116px 0px -55% 0px',
+    rootMargin: '-76px 0px -55% 0px',
     threshold: 0
   });
 
@@ -229,6 +229,7 @@ function renderAll(data) {
   document.getElementById('main-content').classList.remove('hidden');
   document.getElementById('hdr-ticker').classList.remove('hidden');
   document.getElementById('hdr-refresh-btn').classList.remove('hidden');
+  document.getElementById('section-nav').classList.remove('hidden');
 
   if (scraped_data?.market)       renderMarket(scraped_data.market);
   if (scraped_data?.vta35)        renderVta35(scraped_data.vta35);
