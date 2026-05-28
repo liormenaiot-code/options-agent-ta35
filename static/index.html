@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=37" />
+  <link rel="stylesheet" href="/static/style.css?v=38" />
 </head>
 <body>
 
@@ -240,19 +240,36 @@
     <!-- LIVE VERIFICATION BANNER -->
     <div id="live-verify-banner" class="live-verify-banner hidden"></div>
 
-    <!-- STAT CARDS — price + VTA35 only -->
-    <section class="stat-row">
-      <div class="stat-card">
-        <div class="stat-label">מדד ת"א 35</div>
-        <div id="stat-price" class="stat-num cyan">—</div>
-        <div id="stat-change" class="stat-sub">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">VTA35 — מדד הפחד</div>
-        <div id="stat-vta35" class="stat-num orange">—</div>
-        <div id="stat-vta35-sub" class="stat-sub">—</div>
-      </div>
-    </section>
+    <!-- TOP ROW: stat cards + arbitrage side by side -->
+    <div class="top-row">
+
+      <!-- Stat cards -->
+      <section class="stat-row">
+        <div class="stat-card">
+          <div class="stat-label">מדד ת"א 35</div>
+          <div id="stat-price" class="stat-num cyan">—</div>
+          <div id="stat-change" class="stat-sub">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">VTA35 — מדד הפחד</div>
+          <div id="stat-vta35" class="stat-num orange">—</div>
+          <div id="stat-vta35-sub" class="stat-sub">—</div>
+        </div>
+      </section>
+
+      <!-- ARBITRAGE — Globes live data (moved here from below) -->
+      <section class="arb-section" id="arb-section">
+        <div class="arb-header">
+          <span class="arb-title">ארביטראז' ת"א ← ניו יורק</span>
+          <span class="arb-src">מקור: <a href="https://www.globes.co.il/portal/arbitrage/" target="_blank" rel="noopener" class="arb-src-link">גלובס</a></span>
+          <span id="arb-updated" class="arb-updated"></span>
+        </div>
+        <div id="arb-body" class="arb-body">
+          <div class="arb-loading">טוען נתוני ארביטראז'...</div>
+        </div>
+      </section>
+
+    </div>
 
     <!-- BREAKING NEWS — 3 items -->
     <div id="breaking-news-block" style="display:none"></div>
@@ -312,18 +329,6 @@
       </div>
     </section>
 
-    <!-- ARBITRAGE — Globes live data -->
-    <section class="arb-section" id="arb-section">
-      <div class="arb-header">
-        <span class="arb-title">ארביטראז' ת"א ← ניו יורק</span>
-        <span class="arb-src">מקור: <a href="https://www.globes.co.il/portal/arbitrage/" target="_blank" rel="noopener" class="arb-src-link">גלובס</a></span>
-        <span id="arb-updated" class="arb-updated"></span>
-      </div>
-      <div id="arb-body" class="arb-body">
-        <div class="arb-loading">טוען נתוני ארביטראז'...</div>
-      </div>
-    </section>
-
     <!-- RISKS -->
     <section class="risks-section">
       <div class="risks-header">
@@ -362,6 +367,6 @@
   </main>
 
   <script src="/static/bg-shader.js"></script>
-  <script src="/static/app.js?v=37"></script>
+  <script src="/static/app.js?v=38"></script>
 </body>
 </html>

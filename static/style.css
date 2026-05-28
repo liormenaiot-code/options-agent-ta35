@@ -2104,6 +2104,24 @@ body::after {
   margin-top: 3px;
 }
 
+/* ─── TOP ROW: stat cards + arb side by side ── */
+.top-row {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 28px;
+}
+.top-row .stat-row {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.top-row .arb-section {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
 /* ─── STAT ROW — 2 cards, full width ────────── */
 .stat-row { grid-template-columns: repeat(2, 1fr); }
 
@@ -2241,6 +2259,8 @@ body::after {
   #site-header, #main-content { padding-inline: 20px; }
   #error-banner { margin-inline: 20px; }
   .stat-row { grid-template-columns: 1fr; gap: 12px; }
+  .top-row { flex-direction: column; }
+  .top-row .arb-section { max-width: none; }
 }
 
 @media (max-width: 600px) {
