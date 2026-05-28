@@ -813,7 +813,6 @@ function renderStocks(data) {
           </td>
           <td class="wl-us-price">${usPriceHtml}</td>
           <td class="wl-us-chg">${_chgChip(s.us_change_pct)}</td>
-          <td class="wl-us-state"><span class="us-state-badge ${stateCls}">${stateLbl}</span></td>
         </tr>`;
       }).join('');
       bodyDual.innerHTML = `<table class="wl-table">
@@ -823,7 +822,6 @@ function renderStocks(data) {
           <th class="th-us-ticker">טיקר US</th>
           <th class="th-us-price">מחיר $</th>
           <th class="th-change">שינוי%</th>
-          <th style="width:52px">שוק</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
