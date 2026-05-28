@@ -762,23 +762,43 @@ function renderStocks(data) {
     return;
   }
 
-  const dualCol = isDual
-    ? `<th class="th-us">NYSE / NASDAQ</th>` : '';
+  const dualCols = isDual
+    ? `<th class="th-us-ticker">US טיקר</th>
+       <th class="th-us-price">מחיר $</th>
+       <th class="th-us-chg">שינוי US%</th>` : '';
 
   const rows = stocks.map((s, idx) => {
-    const cls     = _chgCls(s.change_pct);
+    const cls      = _chgCls(s.change_pct);
     const priceHtml = s.price != null
       ? fmtNum(s.price, 2)
       : '<span style="color:var(--text-dim)">—</span>';
 
-    const dualCell = isDual
-      ? `<td class="wl-us">${s.dual_listed
-          ? `<span class="wl-us-badge">
-               <span class="wl-us-exch">${esc(s.us_exchange || '')}</span>
-               ${esc(s.us_ticker || '')}
-             </span>`
-          : ''}</td>`
-      : '';
+    let dualCells = '';
+    if (isDual) {
+      if (s.dual_listed) {
+        // Market state badge colour
+        const stateMap = { LIVE: 'us-live', PRE: 'us-pre', AH: 'us-ah', '---': 'us-cls' };
+        const stateCls = stateMap[s.us_market_state] || 'us-cls';
+        const stateLbl = s.us_market_state || '---';
+
+        const usPriceHtml = s.us_price_usd != null
+          ? `$${fmtNum(s.us_price_usd, 2)}`
+          : '<span style="color:var(--text-dim)">—</span>';
+
+        dualCells = `
+          <td class="wl-us-ticker">
+            <span class="wl-us-badge">
+              <span class="wl-us-exch">${esc(s.us_exchange || '')}</span>
+              ${esc(s.us_ticker || '')}
+            </span>
+            <span class="us-state-badge ${stateCls}">${stateLbl}</span>
+          </td>
+          <td class="wl-us-price">${usPriceHtml}</td>
+          <td class="wl-us-chg">${_chgChip(s.us_change_pct, ' sm')}</td>`;
+      } else {
+        dualCells = `<td class="wl-us-ticker"></td><td class="wl-us-price"></td><td class="wl-us-chg"></td>`;
+      }
+    }
 
     return `<tr class="wl-row ${cls}">
       <td class="wl-num">${idx + 1}</td>
@@ -786,7 +806,7 @@ function renderStocks(data) {
       <td class="wl-ticker">${esc(s.tase_ticker)}</td>
       <td class="wl-price">${priceHtml}</td>
       <td class="wl-change">${_chgChip(s.change_pct)}</td>
-      ${dualCell}
+      ${dualCells}
     </tr>`;
   }).join('');
 
@@ -796,8 +816,8 @@ function renderStocks(data) {
       <th>שם מניה</th>
       <th>טיקר</th>
       <th class="th-price">מחיר ₪</th>
-      <th class="th-change">שינוי%</th>
-      ${dualCol}
+      <th class="th-change">ת"א שינוי%</th>
+      ${dualCols}
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;

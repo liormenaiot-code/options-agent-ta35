@@ -2355,10 +2355,13 @@ body::after {
   white-space: nowrap;
 }
 
-.wl-table thead th.th-num    { width: 32px; text-align: center; }
-.wl-table thead th.th-price  { text-align: left; }
-.wl-table thead th.th-change { text-align: left; width: 90px; }
-.wl-table thead th.th-us     { width: 90px; }
+.wl-table thead th.th-num      { width: 32px; text-align: center; }
+.wl-table thead th.th-price    { text-align: left; }
+.wl-table thead th.th-change   { text-align: left; width: 90px; }
+.wl-table thead th.th-us       { width: 90px; }
+.wl-table thead th.th-us-ticker{ width: 110px; }
+.wl-table thead th.th-us-price { text-align: left; width: 80px; }
+.wl-table thead th.th-us-chg   { text-align: left; width: 90px; }
 
 .wl-row {
   border-bottom: 1px solid rgba(255,255,255,0.04);
@@ -2463,6 +2466,36 @@ body::after {
   font-weight: 400;
   font-size: 0.62rem;
 }
+
+/* US dual-listing cells */
+.wl-us-ticker { font-size: 0.7rem; white-space: nowrap; }
+.wl-us-price  {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--white);
+  white-space: nowrap;
+}
+.wl-us-chg { white-space: nowrap; }
+
+/* Market-state badges on dual-listed US price */
+.us-state-badge {
+  display: inline-block;
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  margin-right: 4px;
+  text-transform: uppercase;
+}
+.us-live { background: rgba(74,222,128,0.18);  color: var(--green);  border: 1px solid rgba(74,222,128,0.35); }
+.us-pre  { background: rgba(251,191,36,0.15);  color: #fbbf24;       border: 1px solid rgba(251,191,36,0.35); }
+.us-ah   { background: rgba(129,140,248,0.15); color: var(--indigo); border: 1px solid rgba(129,140,248,0.35); }
+.us-cls  { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid var(--border); }
+
+/* smaller change chip variant used in US column */
+.wl-chg-chip.sm { font-size: 0.68rem; padding: 2px 6px; }
 
 /* ═══════════════════════════════════════════════
    ARBITRAGE SECTION — Globes live data

@@ -1117,78 +1117,138 @@ TA35_STOCKS: list[tuple] = [
 ]
 
 
+def _ohlc_change_pct(result: dict, current_price_raw: float | None,
+                     divisor: float = 1.0) -> float | None:
+    """
+    Compute day-over-day change% from the OHLC close bars in a v8 chart result.
+    Uses closes[-2] as prev and closes[-1] (or current_price_raw) as current.
+    divisor: 100 for ILA→ILS, 1 for USD.
+    """
+    try:
+        raw_closes = result["indicators"]["quote"][0].get("close", [])
+        non_null   = [c for c in raw_closes if c is not None]
+        if len(non_null) >= 2:
+            prev = non_null[-2] / divisor
+            curr = non_null[-1] / divisor
+        elif len(non_null) == 1 and current_price_raw is not None:
+            # Market currently open — today's bar has no close yet
+            prev = non_null[0] / divisor
+            curr = current_price_raw / divisor
+        else:
+            return None
+        if prev and prev != 0:
+            return round((curr - prev) / prev * 100, 2)
+    except (KeyError, IndexError, TypeError):
+        pass
+    return None
+
+
 async def _fetch_one_stock(client, name_he: str, tase_ticker: str,
                            us_ticker, us_exchange) -> dict:
-    """Fetch price for a single TASE stock via Yahoo Finance v8 chart."""
+    """
+    Fetch TASE price + (for dual-listed) concurrent US price with pre/post-market.
+    range=2d gives two actual trading-day bars so change% is always accurate.
+    """
     base = {
-        "name_he":     name_he,
-        "tase_ticker": tase_ticker.replace(".TA", ""),
-        "us_ticker":   us_ticker,
-        "us_exchange": us_exchange,
-        "price":       None,
-        "change_pct":  None,
-        "dual_listed": us_ticker is not None,
+        "name_he":          name_he,
+        "tase_ticker":      tase_ticker.replace(".TA", ""),
+        "us_ticker":        us_ticker,
+        "us_exchange":      us_exchange,
+        "price":            None,
+        "change_pct":       None,
+        "dual_listed":      us_ticker is not None,
+        # US fields (populated only for dual-listed stocks)
+        "us_price_usd":     None,
+        "us_change_pct":    None,
+        "us_market_state":  None,
     }
-    # range=2d gives us today AND yesterday as separate bars, so we can compute
-    # the true day-over-day change from actual closing prices.
-    # range=1d's chartPreviousClose is unreliable — it often references a stale
-    # price (e.g. 2 days back) instead of the actual previous trading day.
-    url = (
-        f"https://query2.finance.yahoo.com/v8/finance/chart/{tase_ticker}"
-        "?interval=1d&range=2d"
-    )
-    try:
-        resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10)
-        if resp.status_code != 200:
-            return base
-        data = resp.json()
-        result = data["chart"]["result"][0]
-        meta   = result["meta"]
 
-        price = meta.get("regularMarketPrice")
-        is_ila = meta.get("currency") == "ILA"
+    # ── TASE fetch ────────────────────────────────────────────────────
+    async def _fetch_tase():
+        url = (f"https://query2.finance.yahoo.com/v8/finance/chart/{tase_ticker}"
+               "?interval=1d&range=2d")
+        try:
+            resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10)
+            if resp.status_code != 200:
+                return
+            d      = resp.json()
+            result = d["chart"]["result"][0]
+            meta   = result["meta"]
+            price  = meta.get("regularMarketPrice")
+            is_ila = meta.get("currency") == "ILA"
 
-        if price is not None:
-            # Yahoo Finance returns TASE prices in ILA (Israeli Agorot = 1/100 ILS).
-            # Divide by 100 to get the real shekel (₪) price shown on the TASE.
-            if is_ila:
-                price = price / 100
-            base["price"] = round(float(price), 2)
+            if price is not None:
+                if is_ila:
+                    price = price / 100
+                base["price"] = round(float(price), 2)
 
-        # --- Change % ---
-        # 1st choice: Yahoo's own field (present during/right after market hours)
-        pct_raw = meta.get("regularMarketChangePercent")
-        if pct_raw is not None:
-            base["change_pct"] = round(float(pct_raw), 2)
-        else:
-            # 2nd choice: derive from the actual previous trading-day close bar.
-            # The 2d range gives us an OHLC array; [-2] is yesterday's session,
-            # [-1] is today's. This is more accurate than chartPreviousClose.
-            try:
-                closes = [
-                    c for c in
-                    result["indicators"]["quote"][0].get("close", [])
-                    if c is not None
-                ]
-                if len(closes) >= 2:
-                    prev_close = closes[-2]
-                    today_close = closes[-1]
-                    if is_ila:
-                        prev_close  = prev_close  / 100
-                        today_close = today_close / 100
-                    if prev_close and prev_close != 0:
-                        base["change_pct"] = round(
-                            (today_close - prev_close) / prev_close * 100, 2
-                        )
-            except (KeyError, IndexError, TypeError):
-                pass
+            # regularMarketChangePercent for TASE is near-always null after hours;
+            # fall back to OHLC-derived change which is always accurate.
+            pct_raw = meta.get("regularMarketChangePercent")
+            if pct_raw is not None:
+                base["change_pct"] = round(float(pct_raw), 2)
+            else:
+                raw_price = meta.get("regularMarketPrice")
+                base["change_pct"] = _ohlc_change_pct(
+                    result, raw_price, divisor=100 if is_ila else 1
+                )
 
-        # Store source URL for UI verification badge
-        base["source"] = f"https://finance.yahoo.com/quote/{tase_ticker}"
-        base["fetched_at_epoch"] = int(__import__('time').time())
+            base["source"]           = f"https://finance.yahoo.com/quote/{tase_ticker}"
+            base["fetched_at_epoch"] = int(__import__('time').time())
+        except Exception:
+            pass
 
-    except Exception:
-        pass
+    # ── US fetch (dual-listed only) ───────────────────────────────────
+    async def _fetch_us():
+        if not us_ticker:
+            return
+        url = (f"https://query2.finance.yahoo.com/v8/finance/chart/{us_ticker}"
+               "?interval=1d&range=2d")
+        try:
+            resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10)
+            if resp.status_code != 200:
+                return
+            d      = resp.json()
+            result = d["chart"]["result"][0]
+            meta   = result["meta"]
+
+            state      = meta.get("marketState", "")
+            reg_price  = meta.get("regularMarketPrice")
+            pre_price  = meta.get("preMarketPrice")
+            post_price = meta.get("postMarketPrice")
+
+            # Pick the most current price based on session state
+            if state == "PRE" and pre_price:
+                current = pre_price
+                label   = "PRE"
+            elif state in ("POST", "POSTPOST") and post_price:
+                current = post_price
+                label   = "AH"          # After Hours
+            elif state == "REGULAR" and reg_price:
+                current = reg_price
+                label   = "LIVE"
+            else:
+                current = reg_price
+                label   = "---"
+
+            if current is not None:
+                base["us_price_usd"]    = round(float(current), 2)
+            base["us_market_state"] = label
+
+            # Day change% — always derived from OHLC (decimal→% handled inside)
+            # regularMarketChangePercent for US is a decimal (e.g. -0.0014 = -0.14%)
+            pct_raw = meta.get("regularMarketChangePercent")
+            if pct_raw is not None:
+                base["us_change_pct"] = round(float(pct_raw) * 100, 2)
+            else:
+                base["us_change_pct"] = _ohlc_change_pct(
+                    result, reg_price, divisor=1
+                )
+        except Exception:
+            pass
+
+    # Fire both fetches concurrently
+    await asyncio.gather(_fetch_tase(), _fetch_us())
     return base
 
 
