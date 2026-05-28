@@ -1129,9 +1129,13 @@ async def _fetch_one_stock(client, name_he: str, tase_ticker: str,
         "change_pct":  None,
         "dual_listed": us_ticker is not None,
     }
+    # range=2d gives us today AND yesterday as separate bars, so we can compute
+    # the true day-over-day change from actual closing prices.
+    # range=1d's chartPreviousClose is unreliable — it often references a stale
+    # price (e.g. 2 days back) instead of the actual previous trading day.
     url = (
         f"https://query2.finance.yahoo.com/v8/finance/chart/{tase_ticker}"
-        "?interval=1d&range=1d"
+        "?interval=1d&range=2d"
     )
     try:
         resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10)
@@ -1141,25 +1145,43 @@ async def _fetch_one_stock(client, name_he: str, tase_ticker: str,
         result = data["chart"]["result"][0]
         meta   = result["meta"]
 
-        price      = meta.get("regularMarketPrice")
-        prev_close = meta.get("chartPreviousClose")
+        price = meta.get("regularMarketPrice")
+        is_ila = meta.get("currency") == "ILA"
 
         if price is not None:
             # Yahoo Finance returns TASE prices in ILA (Israeli Agorot = 1/100 ILS).
             # Divide by 100 to get the real shekel (₪) price shown on the TASE.
-            if meta.get("currency") == "ILA":
+            if is_ila:
                 price = price / 100
-                if prev_close:
-                    prev_close = prev_close / 100
             base["price"] = round(float(price), 2)
 
-        # Prefer Yahoo's own authoritative change% field; fall back to manual
-        # calculation from chartPreviousClose when market is closed/unavailable.
+        # --- Change % ---
+        # 1st choice: Yahoo's own field (present during/right after market hours)
         pct_raw = meta.get("regularMarketChangePercent")
         if pct_raw is not None:
             base["change_pct"] = round(float(pct_raw), 2)
-        elif price is not None and prev_close and prev_close != 0:
-            base["change_pct"] = round((price - prev_close) / prev_close * 100, 2)
+        else:
+            # 2nd choice: derive from the actual previous trading-day close bar.
+            # The 2d range gives us an OHLC array; [-2] is yesterday's session,
+            # [-1] is today's. This is more accurate than chartPreviousClose.
+            try:
+                closes = [
+                    c for c in
+                    result["indicators"]["quote"][0].get("close", [])
+                    if c is not None
+                ]
+                if len(closes) >= 2:
+                    prev_close = closes[-2]
+                    today_close = closes[-1]
+                    if is_ila:
+                        prev_close  = prev_close  / 100
+                        today_close = today_close / 100
+                    if prev_close and prev_close != 0:
+                        base["change_pct"] = round(
+                            (today_close - prev_close) / prev_close * 100, 2
+                        )
+            except (KeyError, IndexError, TypeError):
+                pass
 
         # Store source URL for UI verification badge
         base["source"] = f"https://finance.yahoo.com/quote/{tase_ticker}"
